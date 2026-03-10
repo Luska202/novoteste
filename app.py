@@ -175,23 +175,6 @@ def progresso():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/proxy')
-def proxy():
-    import requests
-    url = request.args.get('url')
-    if not url:
-        abort(400)
-    headers = {}
-    if 'Range' in request.headers:
-        headers['Range'] = request.headers.get('Range')
-    try:
-        resp = requests.get(url, headers=headers, stream=True, timeout=10)
-        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-        headers = [(name, value) for name, value in resp.raw.headers.items() if name.lower() not in excluded_headers]
-        return Response(resp.iter_content(chunk_size=8192), status=resp.status_code, headers=headers)
-    except:
-        abort(500)
-
 # API para obter progresso
 @app.route('/progresso/<tipo>/<int:item_id>')
 @login_required
