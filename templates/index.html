@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player M3U</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background: #1e1e2f;
+            color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        h1 {
+            text-align: center;
+            color: #ffaa00;
+        }
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            overflow: hidden;
+        }
+        .sidebar {
+            width: 350px;
+            background: #2a2a3a;
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+        }
+        .upload-area {
+            background: #33334a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .upload-label {
+            background: #ffaa00;
+            color: #1e1e2f;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            display: inline-block;
+        }
+        .channel-list {
+            flex: 1;
+            overflow-y: auto;
+            background: #33334a;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .channel-item {
+            padding: 10px;
+            margin-bottom: 8px;
+            background: #40405a;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .channel-item:hover {
+            background: #5a5a7a;
+        }
+        .channel-item.selected {
+            background: #ffaa00;
+            color: #1e1e2f;
+            font-weight: bold;
+        }
+        .player-area {
+            flex: 1;
+            background: #000;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            outline: none;
+        }
+        .status {
+            padding: 10px;
+            text-align: center;
+            color: #aaa;
+        }
+        .error {
+            color: #ff6b6b;
+        }
+    </style>
+</head>
+<body>
+    <h1>📺 Player de Listas M3U</h1>
+    <div class="container">
+        <div class="sidebar">
+            <div class="upload-area">
+                <input type="file" id="fileInput" accept=".m3u, .m3u8">
+                <label for="fileInput" class="upload-label">📂 Escolher arquivo M3U</label>
+                <div id="uploadStatus" class="status">Nenhum arquivo carregado</div>
+            </div>
+            <div class="channel-list" id="channelList">
+                <div class="status">Carregue um arquivo para ver os canais</div>
+            </div>
+        </div>
+        <div class="player-area">
+            <video id="videoPlayer" controls></video>
+        </div>
+    </div>
+
+    <!-- Biblioteca hls.js para reprodução de HLS -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadStatus = document.getElementById('uploadStatus');
+        const channelListDiv = document.getElementById('channelList');
+        const videoPlayer = document.getElementById('videoPlayer');
+        let currentHls = null; // Para destruir instância anterior do hls.js
+
+        // Quando um arquivo for selecionado
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            uploadStatus.textContent = `📤 Enviando ${file.name}...`;
+            channelListDiv.innerHTML = '<div class="status">Processando...</div>';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                uploadStatus.textContent = `✅ ${data.channels.length} canais carregados`;
+                renderChannelList(data.channels);
+            })
+            .catch(err => {
+                uploadStatus.textContent = `❌ Erro: ${err.message}`;
+                channelListDiv.innerHTML = `<div class="status error">Falha ao processar o arquivo</div>`;
+            });
+        });
+
+        // Exibe a lista de canais
+        function renderChannelList(channels) {
+            if (channels.length === 0) {
+                channelListDiv.innerHTML = '<div class="status">Nenhum canal encontrado</div>';
+                return;
+            }
+
+            let html = '';
+            channels.forEach((channel, index) => {
+                html += `<div class="channel-item" data-url="${channel.url}" data-name="${channel.name}">${channel.name}</div>`;
+            });
+            channelListDiv.innerHTML = html;
+
+            // Adiciona evento de clique em cada canal
+            document.querySelectorAll('.channel-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    // Remove seleção anterior
+                    document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('selected'));
+                    this.classList.add('selected');
+
+                    const url = this.dataset.url;
+                    const name = this.dataset.name;
+                    playStream(url, name);
+                });
+            });
+        }
+
+        // Reproduz o stream usando o proxy
+        function playStream(originalUrl, name) {
+            // Destroi instância anterior do hls.js se existir
+            if (currentHls) {
+                currentHls.destroy();
+                currentHls = null;
+            }
+
+            // Constrói a URL do proxy
+            const proxyUrl = `/proxy?url=${encodeURIComponent(originalUrl)}`;
+            console.log(`Reproduzindo ${name}: ${proxyUrl}`);
+
+            // Verifica se é HLS (termina com .m3u8)
+            if (originalUrl.toLowerCase().includes('.m3u8')) {
+                if (Hls.isSupported()) {
+                    const hls = new Hls();
+                    currentHls = hls;
+                    hls.loadSource(proxyUrl);
+                    hls.attachMedia(videoPlayer);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        videoPlayer.play().catch(e => console.log('Autoplay bloqueado:', e));
+                    });
+                } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                    // Safari nativo
+                    videoPlayer.src = proxyUrl;
+                    videoPlayer.load();
+                    videoPlayer.play().catch(e => console.log('Autoplay bloqueado:', e));
+                } else {
+                    alert('HLS não é suportado neste navegador.');
+                }
+            } else {
+                // Stream comum (MP4, etc.)
+                videoPlayer.src = proxyUrl;
+                videoPlayer.load();
+                videoPlayer.play().catch(e => console.log('Autoplay bloqueado:', e));
+            }
+        }
+    </script>
+</body>
+</html>
