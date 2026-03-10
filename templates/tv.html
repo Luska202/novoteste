@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}TV ao Vivo{% endblock %}
+
+{% block content %}
+<h2>Canais de TV</h2>
+<input type="text" id="search" placeholder="Pesquisar canais...">
+<div class="channel-grid" id="channel-list">
+    {% for canal in canais %}
+    <div class="channel-card" data-name="{{ canal.nome|lower }}" data-url="{{ canal.url }}">
+        <img src="{{ canal.logo }}" alt="{{ canal.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
+        <h3>{{ canal.nome }}</h3>
+        <button class="favorite-btn" data-id="{{ canal.id }}" data-tipo="tv">❤️</button>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Player Modal -->
+<div id="playerModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <video id="player" class="video-js vjs-default-skin" controls preload="auto" width="100%" height="auto" data-setup='{}'>
+            <source src="" type="application/x-mpegURL">
+        </video>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Lógica de pesquisa e player
+    const searchInput = document.getElementById('search');
+    const cards = document.querySelectorAll('.channel-card');
+
+    searchInput.addEventListener('input', function() {
+        const term = this.value.toLowerCase();
+        cards.forEach(card => {
+            const name = card.dataset.name;
+            if (name.includes(term)) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    });
+
+    // Player modal
+    const modal = document.getElementById('playerModal');
+    const span = document.getElementsByClassName('close')[0];
+    const player = videojs('player');
+
+    cards.forEach(card => {
+        card.addEventListener('click', function() {
+            const url = this.dataset.url;
+            const videoSrc = `/proxy?url=${encodeURIComponent(url)}`;
+            player.src({ src: videoSrc, type: 'application/x-mpegURL' });
+            modal.style.display = 'block';
+            player.play();
+        });
+    });
+
+    span.onclick = function() {
+        modal.style.display = 'none';
+        player.pause();
+    };
+
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            modal.style.display = 'none';
+            player.pause();
+        }
+    };
+</script>
+{% endblock %}

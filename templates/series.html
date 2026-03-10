@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Séries{% endblock %}
+
+{% block content %}
+<h2>Séries</h2>
+<input type="text" id="search" placeholder="Pesquisar séries...">
+<div class="series-grid" id="series-list">
+    {% for serie in series %}
+    <div class="serie-card" data-name="{{ serie.nome|lower }}">
+        <a href="{{ url_for('serie_detalhe', serie_id=serie.id) }}">
+            <img src="{{ serie.logo }}" alt="{{ serie.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
+            <h3>{{ serie.nome }}</h3>
+        </a>
+        <button class="favorite-btn" data-id="{{ serie.id }}" data-tipo="serie">❤️</button>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const searchInput = document.getElementById('search');
+    const cards = document.querySelectorAll('.serie-card');
+    searchInput.addEventListener('input', function() {
+        const term = this.value.toLowerCase();
+        cards.forEach(card => {
+            const name = card.dataset.name;
+            card.style.display = name.includes(term) ? 'block' : 'none';
+        });
+    });
+</script>
+{% endblock %}

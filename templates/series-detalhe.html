@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}{{ serie.nome }}{% endblock %}
+
+{% block content %}
+<h2>{{ serie.nome }}</h2>
+<img src="{{ serie.logo }}" alt="{{ serie.nome }}" style="max-width:200px;">
+<p>Categoria: {{ serie.categoria }}</p>
+
+<div class="temporadas">
+    {% for temporada, episodios in temporadas.items()|sort %}
+    <div class="temporada">
+        <h3>Temporada {{ temporada }}</h3>
+        <ul class="episodios">
+            {% for ep in episodios|sort(attribute='episodio') %}
+            <li class="episodio-item" data-url="{{ ep.url }}" data-temporada="{{ temporada }}" data-episodio="{{ ep.episodio }}" data-id="{{ serie.id }}">
+                <span>{{ ep.episodio }} - {{ ep.nome }}</span>
+                <button class="favorite-btn" data-id="{{ serie.id }}" data-tipo="serie" data-episodio-id="{{ ep.id }}">❤️</button>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Player Modal -->
+<div id="playerModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <video id="player" class="video-js vjs-default-skin" controls preload="auto" width="100%" height="auto" data-setup='{}'>
+            <source src="" type="video/mp4">
+        </video>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const modal = document.getElementById('playerModal');
+    const span = document.getElementsByClassName('close')[0];
+    const player = videojs('player');
+    const serieId = {{ serie.id }};
+
+    document.querySelectorAll('.episodio-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const url = this.dataset.url;
+            const temporada = this.dataset.temporada;
+            const episodio = this.dataset.episodio;
+            const videoSrc = `/proxy?url=${encodeURIComponent(url)}`;
+            player.src({ src: videoSrc, type: 'video/mp4' }); // Ajustar tipo se HLS
+            modal.style.display = 'block';
+            player.play();
+
+            // Carregar progresso
+            fetch(`/progresso/serie/${serieId}?temporada=${temporada}&episodio=${episodio}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.tempo > 0) {
+                        player.currentTime(data.tempo);
+                    }
+                });
+
+            // Salvar progresso periodicamente
+            let interval = setInterval(() => {
+                const tempo = player.currentTime();
+                const duracao = player.duration();
+                fetch('/progresso', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        tipo: 'serie',
+                        item_id: serieId,
+                        temporada: parseInt(temporada),
+                        episodio: parseInt(episodio),
+                        tempo: Math.floor(tempo),
+                        duracao: Math.floor(duracao)
+                    })
+                });
+            }, 5000); // a cada 5 segundos
+
+            span.onclick = function() {
+                modal.style.display = 'none';
+                player.pause();
+                clearInterval(interval);
+            };
+
+            window.onclick = function(event) {
+                if (event.target == modal) {
+                    modal.style.display = 'none';
+                    player.pause();
+                    clearInterval(interval);
+                }
+            };
+        });
+    });
+</script>
+{% endblock %}

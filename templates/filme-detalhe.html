@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}{{ filme.nome }}{% endblock %}
+
+{% block content %}
+<h2>{{ filme.nome }}</h2>
+<img src="{{ filme.logo }}" alt="{{ filme.nome }}" style="max-width:200px;">
+<p>Categoria: {{ filme.categoria }}</p>
+
+<button id="playMovie">Assistir</button>
+
+<!-- Player Modal -->
+<div id="playerModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <video id="player" class="video-js vjs-default-skin" controls preload="auto" width="100%" height="auto" data-setup='{}'>
+            <source src="" type="video/mp4">
+        </video>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const modal = document.getElementById('playerModal');
+    const span = document.getElementsByClassName('close')[0];
+    const player = videojs('player');
+    const filmeId = {{ filme.id }};
+    const playBtn = document.getElementById('playMovie');
+
+    playBtn.addEventListener('click', function() {
+        const url = "{{ filme.url }}";
+        const videoSrc = `/proxy?url=${encodeURIComponent(url)}`;
+        player.src({ src: videoSrc, type: 'video/mp4' });
+        modal.style.display = 'block';
+        player.play();
+
+        // Carregar progresso
+        fetch(`/progresso/filme/${filmeId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.tempo > 0) {
+                    player.currentTime(data.tempo);
+                }
+            });
+
+        let interval = setInterval(() => {
+            const tempo = player.currentTime();
+            const duracao = player.duration();
+            fetch('/progresso', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    tipo: 'filme',
+                    item_id: filmeId,
+                    tempo: Math.floor(tempo),
+                    duracao: Math.floor(duracao)
+                })
+            });
+        }, 5000);
+
+        span.onclick = function() {
+            modal.style.display = 'none';
+            player.pause();
+            clearInterval(interval);
+        };
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = 'none';
+                player.pause();
+                clearInterval(interval);
+            }
+        };
+    });
+</script>
+{% endblock %}

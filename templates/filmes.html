@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Filmes{% endblock %}
+
+{% block content %}
+<h2>Filmes</h2>
+<input type="text" id="search" placeholder="Pesquisar filmes...">
+<div class="filmes-grid" id="filmes-list">
+    {% for filme in filmes %}
+    <div class="filme-card" data-name="{{ filme.nome|lower }}">
+        <a href="{{ url_for('filme_detalhe', filme_id=filme.id) }}">
+            <img src="{{ filme.logo }}" alt="{{ filme.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
+            <h3>{{ filme.nome }}</h3>
+        </a>
+        <button class="favorite-btn" data-id="{{ filme.id }}" data-tipo="filme">❤️</button>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const searchInput = document.getElementById('search');
+    const cards = document.querySelectorAll('.filme-card');
+    searchInput.addEventListener('input', function() {
+        const term = this.value.toLowerCase();
+        cards.forEach(card => {
+            const name = card.dataset.name;
+            card.style.display = name.includes(term) ? 'block' : 'none';
+        });
+    });
+</script>
+{% endblock %}

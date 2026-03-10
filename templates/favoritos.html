@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Favoritos{% endblock %}
+
+{% block content %}
+<h2>Meus Favoritos</h2>
+<div class="favoritos-grid">
+    {% for item in items %}
+        <div class="favorito-card">
+            {% if item.tipo == 'tv' %}
+                <a href="{{ url_for('tv') }}?canal={{ item.item.id }}"> <!-- simplificado -->
+                    <img src="{{ item.item.logo }}" alt="">
+                    <h3>{{ item.item.nome }}</h3>
+                </a>
+            {% elif item.tipo == 'serie' %}
+                <a href="{{ url_for('serie_detalhe', serie_id=item.item.id) }}">
+                    <img src="{{ item.item.logo }}" alt="">
+                    <h3>{{ item.item.nome }}</h3>
+                </a>
+            {% elif item.tipo == 'filme' %}
+                <a href="{{ url_for('filme_detalhe', filme_id=item.item.id) }}">
+                    <img src="{{ item.item.logo }}" alt="">
+                    <h3>{{ item.item.nome }}</h3>
+                </a>
+            {% endif %}
+            <button class="favorite-btn" data-id="{{ item.item.id }}" data-tipo="{{ item.tipo }}" data-action="remove">Remover</button>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}
