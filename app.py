@@ -1,117 +1,191 @@
-from flask import Flask, request, Response, render_template, jsonify, abort
-import requests
 import os
-import re
+from flask import Flask, render_template, redirect, url_for, request, flash, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from database import init_db, load_m3u_to_db
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'sua-chave-secreta-aqui'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Configuração: limite de 100MB para uploads
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
+db = SQLAlchemy(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 
-# Manipuladores de erro globais
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({'error': 'Rota não encontrada'}), 404
+# Importar modelos após criar db
+from models import User, Canal, Serie, Episodio, Filme, Favorito, Progresso
 
-@app.errorhandler(413)
-def request_entity_too_large(e):
-    return jsonify({'error': 'Arquivo muito grande. O limite é 100MB.'}), 413
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    return jsonify({'error': f'Erro interno: {str(e)}'}), 500
+# Inicializar banco de dados e carregar M3U na primeira execução
+with app.app_context():
+    db.create_all()
+    # Verifica se já existem canais, se não, carrega do arquivo m3u
+    if Canal.query.count() == 0 and Serie.query.count() == 0 and Filme.query.count() == 0:
+        load_m3u_to_db(app, db)  # função definida em database.py
 
-def parse_extinf(line):
-    """
-    Extrai atributos e título de uma linha #EXTINF.
-    Formato esperado: #EXTINF:<duração> [atributos],<título>
-    Atributos são pares chave="valor" (podem ter espaços).
-    Retorna um dicionário com os atributos e a chave 'name' para o título.
-    """
-    line = line[8:].strip()  # Remove '#EXTINF:'
-    parts = line.split(',', 1)
-    if len(parts) != 2:
-        return {'name': line.strip()}
-    attr_part, title = parts
-    title = title.strip()
-    duration_part = attr_part.split(' ', 1)
-    duration = duration_part[0].strip()
-    rest = duration_part[1] if len(duration_part) > 1 else ''
-    attrs = {'duration': duration}
-    pattern = r'(\w+)=["\']([^"\']*)["\']'
-    matches = re.findall(pattern, rest)
-    for key, value in matches:
-        attrs[key] = value
-    attrs['name'] = title
-    return attrs
+# Rotas de autenticação
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form['email']
+        senha = request.form['senha']
+        user = User.query.filter_by(email=email).first()
+        if user and check_password_hash(user.senha_hash, senha):
+            login_user(user)
+            return redirect(url_for('index'))
+        flash('Email ou senha inválidos')
+    return render_template('login.html')
 
-def parse_m3u(content):
-    lines = content.splitlines()
-    channels = []
-    current_attrs = {}
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith('#EXTINF:'):
-            current_attrs = parse_extinf(line)
-        elif line.startswith('#'):
-            continue
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        nome = request.form['nome']
+        email = request.form['email']
+        senha = request.form['senha']
+        if User.query.filter_by(email=email).first():
+            flash('Email já cadastrado')
         else:
-            url = line
-            if current_attrs:
-                channel = current_attrs.copy()
-                channel['url'] = url
-                channels.append(channel)
-                current_attrs = {}
-            else:
-                channels.append({'name': 'Canal sem nome', 'url': url})
-    return channels
+            novo_user = User(nome=nome, email=email, senha_hash=generate_password_hash(senha))
+            db.session.add(novo_user)
+            db.session.commit()
+            login_user(novo_user)
+            return redirect(url_for('index'))
+    return render_template('register.html')
 
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# Rotas principais
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    if 'file' not in request.files:
-        return jsonify({'error': 'Nenhum arquivo enviado'}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'Arquivo vazio'}), 400
-    try:
-        content = file.read().decode('utf-8')
-        channels = parse_m3u(content)
-        return jsonify({'channels': channels})
-    except UnicodeDecodeError:
-        return jsonify({'error': 'Arquivo não está em UTF-8. Tente salvar como UTF-8.'}), 400
-    except Exception as e:
-        return jsonify({'error': f'Erro ao processar: {str(e)}'}), 500
+@app.route('/tv')
+@login_required
+def tv():
+    canais = Canal.query.filter_by(tipo='tv').all()
+    return render_template('tv.html', canais=canais)
 
-@app.route('/proxy')
-def proxy():
-    url = request.args.get('url')
-    if not url:
-        abort(400, description='Parâmetro "url" é obrigatório')
-    headers = {}
-    if 'Range' in request.headers:
-        headers['Range'] = request.headers.get('Range')
-    try:
-        resp = requests.get(url, headers=headers, stream=True, timeout=10)
-        excluded_headers = ['content-encoding', 'content-length',
-                            'transfer-encoding', 'connection']
-        headers = [(name, value) for name, value in resp.raw.headers.items()
-                   if name.lower() not in excluded_headers]
-        return Response(resp.iter_content(chunk_size=8192),
-                        status=resp.status_code,
-                        headers=headers)
-    except requests.exceptions.Timeout:
-        abort(504, description='Timeout ao acessar o stream')
-    except requests.exceptions.ConnectionError:
-        abort(502, description='Erro de conexão com o servidor de origem')
-    except Exception as e:
-        abort(500, description=f'Erro no proxy: {str(e)}')
+@app.route('/series')
+@login_required
+def series():
+    # Lista de séries (agrupadas por nome) - precisamos da tabela Serie
+    series = Serie.query.all()
+    return render_template('series.html', series=series)
+
+@app.route('/serie/<int:serie_id>')
+@login_required
+def serie_detalhe(serie_id):
+    serie = Serie.query.get_or_404(serie_id)
+    episodios = Episodio.query.filter_by(serie_id=serie_id).order_by(Episodio.temporada, Episodio.episodio).all()
+    # Agrupar por temporada
+    temporadas = {}
+    for ep in episodios:
+        if ep.temporada not in temporadas:
+            temporadas[ep.temporada] = []
+        temporadas[ep.temporada].append(ep)
+    return render_template('serie-detalhe.html', serie=serie, temporadas=temporadas)
+
+@app.route('/filmes')
+@login_required
+def filmes():
+    filmes = Filme.query.all()
+    return render_template('filmes.html', filmes=filmes)
+
+@app.route('/filme/<int:filme_id>')
+@login_required
+def filme_detalhe(filme_id):
+    filme = Filme.query.get_or_404(filme_id)
+    return render_template('filme-detalhe.html', filme=filme)
+
+@app.route('/favoritos')
+@login_required
+def favoritos():
+    favoritos = Favorito.query.filter_by(user_id=current_user.id).all()
+    # Precisamos buscar os objetos reais
+    items = []
+    for fav in favoritos:
+        if fav.tipo == 'serie':
+            item = Serie.query.get(fav.item_id)
+        elif fav.tipo == 'filme':
+            item = Filme.query.get(fav.item_id)
+        elif fav.tipo == 'tv':
+            item = Canal.query.get(fav.item_id)
+        else:
+            continue
+        if item:
+            items.append({'tipo': fav.tipo, 'item': item})
+    return render_template('favoritos.html', items=items)
+
+@app.route('/perfil')
+@login_required
+def perfil():
+    return render_template('perfil.html', user=current_user)
+
+# API para favoritar/desfavoritar
+@app.route('/favoritar', methods=['POST'])
+@login_required
+def favoritar():
+    data = request.get_json()
+    tipo = data['tipo']
+    item_id = data['item_id']
+    acao = data['acao']  # 'add' ou 'remove'
+    if acao == 'add':
+        fav = Favorito(user_id=current_user.id, item_id=item_id, tipo=tipo)
+        db.session.add(fav)
+        db.session.commit()
+        return jsonify({'status': 'ok'})
+    elif acao == 'remove':
+        Favorito.query.filter_by(user_id=current_user.id, item_id=item_id, tipo=tipo).delete()
+        db.session.commit()
+        return jsonify({'status': 'ok'})
+    return jsonify({'status': 'erro'}), 400
+
+# API para salvar progresso
+@app.route('/progresso', methods=['POST'])
+@login_required
+def progresso():
+    data = request.get_json()
+    tipo = data['tipo']
+    item_id = data['item_id']
+    tempo = data['tempo']  # em segundos
+    duracao = data.get('duracao', 0)
+    temporada = data.get('temporada')
+    episodio = data.get('episodio')
+    # Verifica se já existe progresso
+    prog = Progresso.query.filter_by(user_id=current_user.id, item_id=item_id, tipo=tipo,
+                                     temporada=temporada, episodio=episodio).first()
+    if prog:
+        prog.tempo_assistido = tempo
+        prog.duracao_total = duracao
+    else:
+        prog = Progresso(user_id=current_user.id, item_id=item_id, tipo=tipo,
+                         temporada=temporada, episodio=episodio, tempo_assistido=tempo, duracao_total=duracao)
+        db.session.add(prog)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+# API para obter progresso
+@app.route('/progresso/<tipo>/<int:item_id>')
+@login_required
+def get_progresso(tipo, item_id):
+    temporada = request.args.get('temporada', type=int)
+    episodio = request.args.get('episodio', type=int)
+    prog = Progresso.query.filter_by(user_id=current_user.id, item_id=item_id, tipo=tipo,
+                                     temporada=temporada, episodio=episodio).first()
+    if prog:
+        return jsonify({'tempo': prog.tempo_assistido, 'duracao': prog.duracao_total})
+    return jsonify({'tempo': 0, 'duracao': 0})
 
 if __name__ == '__main__':
-    os.makedirs('templates', exist_ok=True)
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True)
