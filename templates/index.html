@@ -55,6 +55,10 @@
             cursor: pointer;
             font-weight: bold;
             display: inline-block;
+            transition: background 0.2s;
+        }
+        .upload-label:hover {
+            background: #ffc34d;
         }
         .channel-list {
             flex: 1;
@@ -70,6 +74,10 @@
             border-radius: 5px;
             cursor: pointer;
             transition: background 0.2s;
+            word-break: break-word;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         .channel-item:hover {
             background: #5a5a7a;
@@ -78,6 +86,23 @@
             background: #ffaa00;
             color: #1e1e2f;
             font-weight: bold;
+        }
+        .channel-logo {
+            width: 30px;
+            height: 30px;
+            object-fit: contain;
+            border-radius: 4px;
+            background: #2a2a3a;
+        }
+        .channel-info {
+            flex: 1;
+        }
+        .channel-name {
+            font-size: 14px;
+        }
+        .channel-group {
+            font-size: 12px;
+            color: #aaa;
         }
         .player-area {
             flex: 1;
@@ -101,6 +126,9 @@
         .error {
             color: #ff6b6b;
         }
+        .success {
+            color: #6bff6b;
+        }
     </style>
 </head>
 <body>
@@ -108,7 +136,7 @@
     <div class="container">
         <div class="sidebar">
             <div class="upload-area">
-                <input type="file" id="fileInput" accept=".m3u, .m3u8">
+                <input type="file" id="fileInput" accept=".m3u,.m3u8">
                 <label for="fileInput" class="upload-label">📂 Escolher arquivo M3U</label>
                 <div id="uploadStatus" class="status">Nenhum arquivo carregado</div>
             </div>
@@ -121,16 +149,15 @@
         </div>
     </div>
 
-    <!-- Biblioteca hls.js para reprodução de HLS -->
+    <!-- Biblioteca hls.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script>
         const fileInput = document.getElementById('fileInput');
         const uploadStatus = document.getElementById('uploadStatus');
         const channelListDiv = document.getElementById('channelList');
         const videoPlayer = document.getElementById('videoPlayer');
-        let currentHls = null; // Para destruir instância anterior do hls.js
+        let currentHls = null;
 
-        // Quando um arquivo for selecionado
         fileInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -145,21 +172,41 @@
                 method: 'POST',
                 body: formData
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.error) {
-                    throw new Error(data.error);
+            .then(async res => {
+                // Tratamento específico para 413 (Request Entity Too Large)
+                if (res.status === 413) {
+                    // Tenta ler a resposta como JSON (se o backend retornar JSON)
+                    try {
+                        const data = await res.json();
+                        throw new Error(data.error || 'Arquivo muito grande.');
+                    } catch {
+                        throw new Error('Arquivo muito grande. O limite é 100MB. Se você usa nginx, pode precisar aumentar client_max_body_size.');
+                    }
                 }
+                const contentType = res.headers.get('content-type');
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`HTTP ${res.status}: ${text.substring(0, 200)}`);
+                }
+                if (contentType && contentType.includes('application/json')) {
+                    return res.json();
+                } else {
+                    const text = await res.text();
+                    throw new Error(`Resposta não é JSON: ${text.substring(0, 200)}`);
+                }
+            })
+            .then(data => {
+                if (data.error) throw new Error(data.error);
                 uploadStatus.textContent = `✅ ${data.channels.length} canais carregados`;
                 renderChannelList(data.channels);
             })
             .catch(err => {
                 uploadStatus.textContent = `❌ Erro: ${err.message}`;
                 channelListDiv.innerHTML = `<div class="status error">Falha ao processar o arquivo</div>`;
+                console.error(err);
             });
         });
 
-        // Exibe a lista de canais
         function renderChannelList(channels) {
             if (channels.length === 0) {
                 channelListDiv.innerHTML = '<div class="status">Nenhum canal encontrado</div>';
@@ -168,37 +215,50 @@
 
             let html = '';
             channels.forEach((channel, index) => {
-                html += `<div class="channel-item" data-url="${channel.url}" data-name="${channel.name}">${channel.name}</div>`;
+                const name = escapeHtml(channel.name || 'Canal sem nome');
+                const group = channel['group-title'] ? escapeHtml(channel['group-title']) : '';
+                const logo = channel['tvg-logo'] || '';
+                const encodedUrl = encodeURIComponent(channel.url);
+                html += `
+                    <div class="channel-item" data-url="${encodedUrl}" data-name="${name}" data-group="${group}" data-logo="${logo}">
+                        ${logo ? `<img class="channel-logo" src="${logo}" alt="" onerror="this.style.display='none'">` : '<div style="width:30px"></div>'}
+                        <div class="channel-info">
+                            <div class="channel-name">${name}</div>
+                            ${group ? `<div class="channel-group">${group}</div>` : ''}
+                        </div>
+                    </div>
+                `;
             });
             channelListDiv.innerHTML = html;
 
-            // Adiciona evento de clique em cada canal
             document.querySelectorAll('.channel-item').forEach(item => {
                 item.addEventListener('click', function() {
-                    // Remove seleção anterior
                     document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('selected'));
                     this.classList.add('selected');
 
-                    const url = this.dataset.url;
+                    const encodedUrl = this.dataset.url;
+                    const url = decodeURIComponent(encodedUrl);
                     const name = this.dataset.name;
                     playStream(url, name);
                 });
             });
         }
 
-        // Reproduz o stream usando o proxy
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         function playStream(originalUrl, name) {
-            // Destroi instância anterior do hls.js se existir
             if (currentHls) {
                 currentHls.destroy();
                 currentHls = null;
             }
 
-            // Constrói a URL do proxy
             const proxyUrl = `/proxy?url=${encodeURIComponent(originalUrl)}`;
             console.log(`Reproduzindo ${name}: ${proxyUrl}`);
 
-            // Verifica se é HLS (termina com .m3u8)
             if (originalUrl.toLowerCase().includes('.m3u8')) {
                 if (Hls.isSupported()) {
                     const hls = new Hls();
@@ -208,8 +268,11 @@
                     hls.on(Hls.Events.MANIFEST_PARSED, () => {
                         videoPlayer.play().catch(e => console.log('Autoplay bloqueado:', e));
                     });
+                    hls.on(Hls.Events.ERROR, (event, data) => {
+                        console.error('Erro HLS:', data);
+                        uploadStatus.textContent = '❌ Erro ao carregar stream HLS';
+                    });
                 } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-                    // Safari nativo
                     videoPlayer.src = proxyUrl;
                     videoPlayer.load();
                     videoPlayer.play().catch(e => console.log('Autoplay bloqueado:', e));
@@ -217,7 +280,6 @@
                     alert('HLS não é suportado neste navegador.');
                 }
             } else {
-                // Stream comum (MP4, etc.)
                 videoPlayer.src = proxyUrl;
                 videoPlayer.load();
                 videoPlayer.play().catch(e => console.log('Autoplay bloqueado:', e));
