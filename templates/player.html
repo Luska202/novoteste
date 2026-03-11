@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ canal.nome }}{% endblock %}
+{% block content %}
+<h1>{{ canal.nome }}</h1>
+<div id="player-container">
+    <video id="video-player" controls></video>
+    <div id="player-controls">
+        <button id="play-pause">Play</button>
+        <span id="time">00:00 / 00:00</span>
+        <select id="quality-selector">
+            <option value="auto">Auto</option>
+        </select>
+        <button id="fullscreen">⛶</button>
+    </div>
+</div>
+<script>
+    const video = document.getElementById('video-player');
+    const playPauseBtn = document.getElementById('play-pause');
+    const timeSpan = document.getElementById('time');
+    const qualitySelector = document.getElementById('quality-selector');
+    const fullscreenBtn = document.getElementById('fullscreen');
+    const canalId = {{ canal.id }};
+    const streamUrl = "{{ canal.url }}";
+
+    // Carregar progresso
+    fetch(`/progresso/${canalId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.tempo > 0) {
+                video.currentTime = data.tempo;
+            }
+        });
+
+    // Configurar fonte do vídeo (usando proxy para evitar CORS)
+    video.src = `/proxy?url=${encodeURIComponent(streamUrl)}`;
+
+    video.addEventListener('timeupdate', () => {
+        const current = formatTime(video.currentTime);
+        const total = formatTime(video.duration);
+        timeSpan.textContent = `${current} / ${total}`;
+        // Salvar progresso a cada 10 segundos
+        if (Math.floor(video.currentTime) % 10 === 0) {
+            fetch(`/progresso/${canalId}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({tempo: Math.floor(video.currentTime), duracao: Math.floor(video.duration)})
+            });
+        }
+    });
+
+    playPauseBtn.addEventListener('click', () => {
+        if (video.paused) video.play();
+        else video.pause();
+    });
+
+    fullscreenBtn.addEventListener('click', () => {
+        if (video.requestFullscreen) video.requestFullscreen();
+    });
+
+    function formatTime(seconds) {
+        if (isNaN(seconds)) return '00:00';
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        if (h > 0) return `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+    }
+</script>
+{% endblock %}

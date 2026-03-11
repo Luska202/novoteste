@@ -1,30 +1,34 @@
-// Funções globais, como favoritar
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('favorite-btn')) {
-        const btn = e.target;
-        const id = btn.dataset.id;
-        const tipo = btn.dataset.tipo;
-        const acao = btn.dataset.action || 'add'; // se não tiver action, assume add
-        fetch('/favoritar', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({tipo: tipo, item_id: parseInt(id), acao: acao})
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'ok') {
-                if (acao === 'add') {
-                    btn.textContent = '❤️';
-                    btn.dataset.action = 'remove';
+// Função de pesquisa
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('search');
+    if (searchInput) {
+        searchInput.addEventListener('keyup', function() {
+            const term = this.value.toLowerCase();
+            const cards = document.querySelectorAll('.grid .card');
+            cards.forEach(card => {
+                const nome = card.dataset.nome || card.querySelector('h3')?.textContent.toLowerCase();
+                if (nome && nome.includes(term)) {
+                    card.style.display = 'block';
                 } else {
-                    btn.textContent = '🤍';
-                    btn.dataset.action = 'add';
-                    // Se estiver na página de favoritos, remove o card
-                    if (window.location.pathname === '/favoritos') {
-                        btn.closest('.favorito-card').remove();
-                    }
+                    card.style.display = 'none';
                 }
-            }
+            });
         });
     }
+
+    // Favoritar
+    document.querySelectorAll('.favorito').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const canalId = this.dataset.id;
+            fetch(`/favoritar/${canalId}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'adicionado') {
+                        this.textContent = '⭐ Remover';
+                    } else {
+                        this.textContent = '⭐';
+                    }
+                });
+        });
+    });
 });

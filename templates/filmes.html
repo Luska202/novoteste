@@ -1,33 +1,19 @@
 {% extends "base.html" %}
-
 {% block title %}Filmes{% endblock %}
-
 {% block content %}
-<h2>Filmes</h2>
+<h1>Filmes</h1>
 <input type="text" id="search" placeholder="Pesquisar filmes...">
-<div class="filmes-grid" id="filmes-list">
-    {% for filme in filmes %}
-    <div class="filme-card" data-name="{{ filme.nome|lower }}">
-        <a href="{{ url_for('filme_detalhe', filme_id=filme.id) }}">
-            <img src="{{ filme.logo }}" alt="{{ filme.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
-            <h3>{{ filme.nome }}</h3>
-        </a>
-        <button class="favorite-btn" data-id="{{ filme.id }}" data-tipo="filme">❤️</button>
+{% for cat, filmes_lista in categorias.items() %}
+<h2>{{ cat }}</h2>
+<div class="grid" data-categoria="{{ cat|lower }}">
+    {% for filme in filmes_lista %}
+    <div class="card" data-nome="{{ filme.nome|lower }}">
+        <img src="{{ filme.logo }}" alt="{{ filme.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
+        <h3>{{ filme.nome }}</h3>
+        <a href="{{ url_for('filme_detalhe', id=filme.id) }}" class="btn">Ver detalhes</a>
+        <button class="favorito" data-id="{{ filme.id }}">⭐</button>
     </div>
     {% endfor %}
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-    const searchInput = document.getElementById('search');
-    const cards = document.querySelectorAll('.filme-card');
-    searchInput.addEventListener('input', function() {
-        const term = this.value.toLowerCase();
-        cards.forEach(card => {
-            const name = card.dataset.name;
-            card.style.display = name.includes(term) ? 'block' : 'none';
-        });
-    });
-</script>
+{% endfor %}
 {% endblock %}

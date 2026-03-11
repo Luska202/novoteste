@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Rádio{% endblock %}
+{% block content %}
+<h1>Rádios</h1>
+<input type="text" id="search" placeholder="Pesquisar rádios...">
+{% for cat, radios_lista in categorias.items() %}
+<h2>{{ cat }}</h2>
+<div class="grid" data-categoria="{{ cat|lower }}">
+    {% for radio in radios_lista %}
+    <div class="card" data-nome="{{ radio.nome|lower }}">
+        <img src="{{ radio.logo }}" alt="{{ radio.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
+        <h3>{{ radio.nome }}</h3>
+        <a href="{{ url_for('play', id=radio.id) }}" class="btn">Ouvir</a>
+        <button class="favorito" data-id="{{ radio.id }}">⭐</button>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+{% endblock %}
