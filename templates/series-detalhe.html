@@ -1,20 +1,46 @@
 {% extends "base.html" %}
 {% block title %}{{ serie_nome }}{% endblock %}
 {% block content %}
-<h1>{{ serie_nome }}</h1>
-<div id="temporadas">
-    {% for temp, epis in temporadas.items() %}
-    <div class="temporada">
-        <h2>Temporada {{ temp }}</h2>
-        <div class="episodios">
-            {% for ep in epis %}
-            <div class="episodio">
-                <a href="{{ url_for('play', id=ep.id) }}">Episódio {{ ep.episodio }}: {{ ep.nome }}</a>
-                <button class="favorito" data-id="{{ ep.id }}">⭐</button>
+<div class="serie-detalhe">
+    <h1>{{ serie_nome }}</h1>
+    <div class="temporadas-container">
+        {% for temp, epis in temporadas.items() %}
+        <div class="temporada-card">
+            <div class="temporada-header" onclick="toggleEpisodios(this)">
+                <h2>Temporada {{ temp }}</h2>
+                <i class="fas fa-chevron-down"></i>
             </div>
-            {% endfor %}
+            <div class="episodios-list" style="display: none;">
+                {% for ep in epis %}
+                <div class="episodio-item">
+                    <img src="{{ ep.logo }}" alt="{{ ep.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
+                    <div class="episodio-info">
+                        <h3>{{ ep.nome }}</h3>
+                        <a href="{{ url_for('play', id=ep.id) }}" class="btn btn-small">Assistir</a>
+                        <button class="favorito-btn" data-id="{{ ep.id }}"><i class="fas fa-heart"></i></button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
+        {% endfor %}
     </div>
-    {% endfor %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+    function toggleEpisodios(header) {
+        const list = header.nextElementSibling;
+        const icon = header.querySelector('i');
+        if (list.style.display === 'none') {
+            list.style.display = 'block';
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+        } else {
+            list.style.display = 'none';
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        }
+    }
+</script>
 {% endblock %}

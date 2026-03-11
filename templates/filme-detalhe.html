@@ -2,7 +2,7 @@
 {% block title %}{{ filme.nome }}{% endblock %}
 {% block content %}
 <h1>{{ filme.nome }}</h1>
-<img src="{{ filme.logo }}" alt="{{ filme.nome }}">
+<img src="{{ filme.logo }}" alt="{{ filme.nome }}" style="max-width:300px">
 <p>Categoria: {{ filme.categoria }}</p>
 <a href="{{ url_for('play', id=filme.id) }}" class="btn">Assistir</a>
 <button class="favorito" data-id="{{ filme.id }}">⭐ Favoritar</button>

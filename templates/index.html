@@ -1,6 +1,56 @@
 {% extends "base.html" %}
 {% block title %}Início{% endblock %}
 {% block content %}
-<h1>Bem-vindo ao IPTV Player</h1>
-<p>Selecione uma categoria no menu.</p>
+<h1>Para você</h1>
+
+<section class="row-section">
+    <h2>Filmes recomendados <span class="ver-mais" onclick="location.href='{{ url_for('filmes') }}'">Ver mais</span></h2>
+    <div class="horizontal-scroll" id="filmes-recomendados"></div>
+</section>
+
+<section class="row-section">
+    <h2>Séries recomendadas <span class="ver-mais" onclick="location.href='{{ url_for('series') }}'">Ver mais</span></h2>
+    <div class="horizontal-scroll" id="series-recomendadas"></div>
+</section>
+
+<section class="row-section">
+    <h2>Assistido recentemente</h2>
+    <div class="horizontal-scroll" id="assistido-recentemente"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        carregarInicio();
+    });
+
+    function carregarInicio() {
+        fetch('/api/inicio')
+            .then(res => res.json())
+            .then(data => {
+                preencherLinha('filmes-recomendados', data.filmes_recomendados, 'filme');
+                preencherLinha('series-recomendadas', data.series_recomendadas, 'serie');
+                preencherLinha('assistido-recentemente', data.assistido_recentemente, 'todos');
+            });
+    }
+
+    function preencherLinha(elementId, itens, tipo) {
+        const container = document.getElementById(elementId);
+        container.innerHTML = '';
+        itens.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'card-horizontal';
+            card.innerHTML = `
+                <img src="${item.logo || '/static/images/placeholder.png'}" alt="${item.nome}" onerror="this.src='/static/images/placeholder.png'">
+                <h4>${item.nome}</h4>
+                <a href="/play/${item.id}" class="btn-small">Assistir</a>
+            `;
+            container.appendChild(card);
+        });
+        if (itens.length === 0) {
+            container.innerHTML = '<p>Nenhum item encontrado.</p>';
+        }
+    }
+</script>
 {% endblock %}

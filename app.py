@@ -364,6 +364,32 @@ def obter_progresso(canal_id):
         return jsonify({'tempo': progresso.tempo, 'duracao': progresso.duracao})
     return jsonify({'tempo': 0, 'duracao': 0})
 
+@app.route('/api/busca')
+def api_busca():
+    termo = request.args.get('q', '').strip()
+    pagina = int(request.args.get('pagina', 1))
+    por_pagina = 20  # pode ajustar
+    
+    if not termo:
+        return jsonify({'itens': [], 'total': 0, 'pagina': 1, 'total_paginas': 1})
+    
+    # Busca em todos os tipos, ignorando maiúsculas/minúsculas
+    query = Canal.query.filter(Canal.nome.ilike(f'%{termo}%'))
+    total = query.count()
+    paginacao = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    
+    return jsonify({
+        'itens': [c.serialize() for c in paginacao.items],
+        'total': total,
+        'pagina': pagina,
+        'total_paginas': paginacao.pages
+    })
+
+@app.route('/busca')
+def busca():
+    termo = request.args.get('q', '')
+    return render_template('resultados.html', termo=termo)
+
 # ---------- Proxy ----------
 @app.route('/proxy')
 def proxy():

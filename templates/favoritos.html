@@ -2,14 +2,28 @@
 {% block title %}Favoritos{% endblock %}
 {% block content %}
 <h1>Meus Favoritos</h1>
-<div class="grid">
-    {% for fav in favoritos %}
-    <div class="card">
-        <img src="{{ fav.canal.logo }}" alt="{{ fav.canal.nome }}">
-        <h3>{{ fav.canal.nome }}</h3>
-        <a href="{{ url_for('play', id=fav.canal.id) }}" class="btn">Assistir</a>
-        <button class="favorito" data-id="{{ fav.canal.id }}">⭐ Remover</button>
-    </div>
-    {% endfor %}
-</div>
+<div class="grid" id="favoritos-lista"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        fetch('/api/favoritos')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('favoritos-lista');
+                data.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <img src="${item.logo || '/static/images/placeholder.png'}" alt="${item.nome}">
+                        <h3>${item.nome}</h3>
+                        <a href="/play/${item.id}" class="btn">Assistir</a>
+                        <button class="favorito" data-id="${item.id}">⭐ Remover</button>
+                    `;
+                    container.appendChild(card);
+                });
+            });
+    });
+</script>
 {% endblock %}

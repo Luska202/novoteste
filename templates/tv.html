@@ -2,15 +2,81 @@
 {% block title %}TV{% endblock %}
 {% block content %}
 <h1>Canais de TV</h1>
-<input type="text" id="search" placeholder="Pesquisar canais...">
-<div class="grid" id="channel-grid">
-    {% for canal in canais %}
-    <div class="card" data-nome="{{ canal.nome|lower }}">
-        <img src="{{ canal.logo }}" alt="{{ canal.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
-        <h3>{{ canal.nome }}</h3>
-        <a href="{{ url_for('play', id=canal.id) }}" class="btn">Assistir</a>
-        <button class="favorito" data-id="{{ canal.id }}">⭐</button>
-    </div>
-    {% endfor %}
+
+<div class="search-bar">
+    <input type="text" id="search-input" placeholder="Pesquisar canais...">
+    <button id="search-btn">Pesquisar</button>
 </div>
+
+<div class="grid" id="tv-lista"></div>
+<div class="pagination">
+    <button id="carregar-mais" data-pagina="1" data-total="">Carregar mais</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentPage = 1;
+    let totalPages = 1;
+    let searchTerm = '';
+
+    document.addEventListener('DOMContentLoaded', function() {
+        carregarListaTV(1, '');
+
+        document.getElementById('search-btn').addEventListener('click', function() {
+            searchTerm = document.getElementById('search-input').value.trim();
+            currentPage = 1;
+            document.getElementById('tv-lista').innerHTML = '';
+            carregarListaTV(currentPage, searchTerm);
+        });
+
+        document.getElementById('search-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('search-btn').click();
+            }
+        });
+
+        document.getElementById('carregar-mais').addEventListener('click', function() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                carregarListaTV(currentPage, searchTerm);
+            }
+        });
+    });
+
+    function carregarListaTV(pagina, termo) {
+        let url = `/api/tv/lista?pagina=${pagina}`;
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                totalPages = data.total_paginas;
+                let itens = data.itens;
+                if (termo) {
+                    itens = itens.filter(item => item.nome.toLowerCase().includes(termo.toLowerCase()));
+                }
+                exibirTV(itens, pagina === 1);
+                if (pagina >= totalPages) {
+                    document.getElementById('carregar-mais').style.display = 'none';
+                } else {
+                    document.getElementById('carregar-mais').style.display = 'block';
+                }
+            });
+    }
+
+    function exibirTV(itens, limpar) {
+        const container = document.getElementById('tv-lista');
+        if (limpar) container.innerHTML = '';
+        itens.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `
+                <img src="${item.logo || '/static/images/placeholder.png'}" alt="${item.nome}" onerror="this.src='/static/images/placeholder.png'">
+                <h3>${item.nome}</h3>
+                <a href="/play/${item.id}" class="btn">Assistir</a>
+                <button class="favorito" data-id="${item.id}">⭐</button>
+            `;
+            container.appendChild(card);
+        });
+    }
+</script>
 {% endblock %}
