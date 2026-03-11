@@ -8,8 +8,7 @@
     <button id="search-btn" class="search-btn">Pesquisar</button>
 </div>
 
-<h2 class="section-title">Todos os canais (A-Z)</h2>
-<div class="category-grid" id="todos-canais"></div>
+<div class="category-grid" id="tv-grid"></div>
 <div class="load-more-container">
     <button id="load-more" class="btn btn-outline" style="display: none;">Carregar Mais</button>
 </div>
@@ -22,9 +21,9 @@
         fetch(`/api/tv/lista?pagina=${pagina}`)
             .then(res => res.json())
             .then(data => {
-                const container = document.getElementById('todos-canais');
+                const container = document.getElementById('tv-grid');
                 data.itens.forEach(item => {
-                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'tv'));
+                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item));
                 });
                 const btn = document.getElementById('load-more');
                 if (data.pagina < data.total_paginas) {

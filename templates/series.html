@@ -11,14 +11,17 @@
 <h2 class="section-title">Lançamento</h2>
 <div class="horizontal-scroll" id="lancamento"></div>
 
-<h2 class="section-title">Comédia</h2>
-<div class="horizontal-scroll" id="comedia"></div>
+<h2 class="section-title">Globoplay</h2>
+<div class="horizontal-scroll" id="globoplay"></div>
 
-<h2 class="section-title">Drama</h2>
-<div class="horizontal-scroll" id="drama"></div>
+<h2 class="section-title">Disney+</h2>
+<div class="horizontal-scroll" id="disney"></div>
 
-<h2 class="section-title">Ação</h2>
-<div class="horizontal-scroll" id="acao"></div>
+<h2 class="section-title">Animes</h2>
+<div class="horizontal-scroll" id="animes"></div>
+
+<h2 class="section-title">Doramas</h2>
+<div class="horizontal-scroll" id="doramas"></div>
 
 <h2 class="section-title">Todas as séries (A-Z)</h2>
 <div class="category-grid" id="todas-series"></div>
@@ -28,6 +31,8 @@
 {% endblock %}
 {% block scripts %}
 <script>
+    let currentPage = 1;
+
     function carregarCategoria(url, containerId) {
         fetch(url)
             .then(res => res.json())
@@ -35,15 +40,16 @@
                 const container = document.getElementById(containerId);
                 container.innerHTML = '';
                 data.forEach(item => {
-                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'serie'));
+                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item));
                 });
             });
     }
 
     carregarCategoria('/api/series/lancamento', 'lancamento');
-    carregarCategoria('/api/series/categoria/Comédia', 'comedia');
-    carregarCategoria('/api/series/categoria/Drama', 'drama');
-    carregarCategoria('/api/series/categoria/Ação', 'acao');
+    carregarCategoria('/api/series/categoria/Globoplay', 'globoplay');
+    carregarCategoria('/api/series/categoria/Disney+', 'disney');
+    carregarCategoria('/api/series/categoria/Animes', 'animes');
+    carregarCategoria('/api/series/categoria/Doramas', 'doramas');
 
     function carregarLista(pagina) {
         fetch(`/api/series/lista?pagina=${pagina}`)
@@ -51,7 +57,7 @@
             .then(data => {
                 const container = document.getElementById('todas-series');
                 data.itens.forEach(item => {
-                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'serie'));
+                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item));
                 });
                 const btn = document.getElementById('load-more');
                 if (data.pagina < data.total_paginas) {

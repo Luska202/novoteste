@@ -8,21 +8,22 @@
     <button id="search-btn" class="search-btn">Pesquisar</button>
 </div>
 
-<h2 class="section-title">Todas as rádios (A-Z)</h2>
-<div class="category-grid" id="todas-radios"></div>
+<div class="category-grid" id="radio-grid"></div>
 <div class="load-more-container">
     <button id="load-more" class="btn btn-outline" style="display: none;">Carregar Mais</button>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
+    let currentPage = 1;
+
     function carregarLista(pagina) {
         fetch(`/api/radio/lista?pagina=${pagina}`)
             .then(res => res.json())
             .then(data => {
-                const container = document.getElementById('todas-radios');
+                const container = document.getElementById('radio-grid');
                 data.itens.forEach(item => {
-                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'radio'));
+                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item));
                 });
                 const btn = document.getElementById('load-more');
                 if (data.pagina < data.total_paginas) {

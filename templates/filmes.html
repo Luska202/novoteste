@@ -37,14 +37,14 @@
                 const container = document.getElementById(containerId);
                 container.innerHTML = '';
                 data.forEach(item => {
-                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'filme'));
+                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item));
                 });
             });
     }
 
     carregarCategoria('/api/filmes/lancamento', 'lancamento');
     carregarCategoria('/api/filmes/categoria/Comédia', 'comedia');
-    carregarCategoria('/api/filmes/categoria/Thriller', 'acao');  // Ação = Thriller
+    carregarCategoria('/api/filmes/categoria/Thriller', 'acao');
     carregarCategoria('/api/filmes/categoria/Romance', 'romance');
 
     function carregarLista(pagina) {
@@ -53,7 +53,7 @@
             .then(data => {
                 const container = document.getElementById('todos-filmes');
                 data.itens.forEach(item => {
-                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'filme'));
+                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item));
                 });
                 const btn = document.getElementById('load-more');
                 if (data.pagina < data.total_paginas) {
@@ -72,7 +72,6 @@
         carregarLista(nextPage);
     });
 
-    // Pesquisa
     window.setupSearch('search-input', 'search-btn');
 </script>
 {% endblock %}

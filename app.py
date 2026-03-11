@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 # ---------- Funções auxiliares para carregar JSON ----------
 def carregar_json_no_banco():
+    """Carrega os dados do arquivo m3u/lista.json para o banco, se o banco estiver vazio."""
     if Canal.query.first() is not None:
         logger.info("Banco já contém dados. Nenhuma carga realizada.")
         return
@@ -50,6 +51,7 @@ def carregar_json_no_banco():
         episodio = item.get('episodio')
         url = item.get('url', '')
 
+        # Mapeia tipo
         if tipo_original.lower() == 'radio':
             tipo = 'radio'
         elif tipo_original.lower() == 'series':
@@ -152,6 +154,8 @@ def serie_detalhe(nome):
         return redirect(url_for('login'))
     episodios = Canal.query.filter_by(tipo='serie', serie_nome=nome).order_by(
         Canal.temporada, Canal.episodio).all()
+    if not episodios:
+        return redirect(url_for('series'))
     temporadas = {}
     for ep in episodios:
         temp = ep.temporada
@@ -172,7 +176,16 @@ def play(id):
     if 'usuario_id' not in session:
         return redirect(url_for('login'))
     canal = Canal.query.get_or_404(id)
-    return render_template('player.html', canal=canal)
+    proximo = None
+    if canal.tipo == 'serie' and canal.serie_nome and canal.temporada is not None and canal.episodio is not None:
+        # Busca próximo episódio na mesma série (próximo da mesma temporada ou primeira da próxima)
+        proximo = Canal.query.filter(
+            Canal.tipo=='serie',
+            Canal.serie_nome == canal.serie_nome,
+            ((Canal.temporada == canal.temporada) & (Canal.episodio > canal.episodio)) |
+            ((Canal.temporada == canal.temporada + 1) & (Canal.episodio == 1))
+        ).order_by(Canal.temporada, Canal.episodio).first()
+    return render_template('player.html', canal=canal, proximo_episodio=proximo)
 
 @app.route('/favoritos')
 def favoritos():
@@ -194,23 +207,24 @@ def busca():
     termo = request.args.get('q', '')
     return render_template('resultados.html', termo=termo)
 
-# ---------- API ----------
-def get_random_items(tipo, limite=8):
+# ---------- API para dados dinâmicos ----------
+def get_random_items(tipo, limite=15):
     from sqlalchemy.sql.expression import func
     return Canal.query.filter_by(tipo=tipo).order_by(func.random()).limit(limite).all()
 
-def get_recentemente_assistidos(usuario_id, limite=8):
+def get_recentemente_assistidos(usuario_id, limite=15):
     progressos = Progresso.query.filter_by(usuario_id=usuario_id).order_by(Progresso.data_atualizacao.desc()).limit(limite).all()
-    return [p.canal for p in progressos if p.canal]
+    # Garantir que o canal ainda existe (caso tenha sido deletado)
+    return [p.canal for p in progressos if p.canal is not None]
 
 @app.route('/api/inicio')
 def api_inicio():
     if 'usuario_id' not in session:
         return jsonify({'erro': 'Não autenticado'}), 401
     usuario_id = session['usuario_id']
-    filmes_rec = [c.serialize() for c in get_random_items('filme', 8)]
-    series_rec = [c.serialize() for c in get_random_items('serie', 8)]
-    recentes = [c.serialize() for c in get_recentemente_assistidos(usuario_id, 8)]
+    filmes_rec = [c.serialize() for c in get_random_items('filme', 15)]
+    series_rec = [c.serialize() for c in get_random_items('serie', 15)]
+    recentes = [c.serialize() for c in get_recentemente_assistidos(usuario_id, 15)]
     return jsonify({
         'filmes_recomendados': filmes_rec,
         'series_recomendadas': series_rec,
@@ -219,18 +233,18 @@ def api_inicio():
 
 @app.route('/api/filmes/categoria/<categoria>')
 def api_filmes_categoria(categoria):
-    filmes = Canal.query.filter_by(tipo='filme', categoria=categoria).limit(8).all()
+    filmes = Canal.query.filter_by(tipo='filme', categoria=categoria).limit(15).all()
     return jsonify([f.serialize() for f in filmes])
 
 @app.route('/api/filmes/lancamento')
 def api_filmes_lancamento():
-    filmes = Canal.query.filter_by(tipo='filme').order_by(Canal.id.desc()).limit(8).all()
+    filmes = Canal.query.filter_by(tipo='filme').order_by(Canal.id.desc()).limit(15).all()
     return jsonify([f.serialize() for f in filmes])
 
 @app.route('/api/filmes/lista')
 def api_filmes_lista():
     pagina = int(request.args.get('pagina', 1))
-    por_pagina = 10
+    por_pagina = 15
     filmes = Canal.query.filter_by(tipo='filme').order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [f.serialize() for f in filmes.items],
@@ -241,18 +255,25 @@ def api_filmes_lista():
 
 @app.route('/api/series/categoria/<categoria>')
 def api_series_categoria(categoria):
-    series = Canal.query.filter_by(tipo='serie', categoria=categoria).limit(8).all()
+    # Para séries, precisamos retornar séries distintas (não episódios) dessa categoria
+    from sqlalchemy import func
+    subquery = db.session.query(Canal.serie_nome, db.func.min(Canal.id).label('id')).filter(
+        Canal.tipo=='serie', Canal.categoria==categoria).group_by(Canal.serie_nome).subquery()
+    series = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id).limit(15).all()
     return jsonify([s.serialize() for s in series])
 
 @app.route('/api/series/lancamento')
 def api_series_lancamento():
-    series = Canal.query.filter_by(tipo='serie').order_by(Canal.id.desc()).limit(8).all()
+    # Últimas séries adicionadas (considerando o primeiro episódio de cada série)
+    from sqlalchemy import func
+    subquery = db.session.query(Canal.serie_nome, db.func.min(Canal.id).label('id')).filter_by(tipo='serie').group_by(Canal.serie_nome).subquery()
+    series = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id).order_by(Canal.id.desc()).limit(15).all()
     return jsonify([s.serialize() for s in series])
 
 @app.route('/api/series/lista')
 def api_series_lista():
     pagina = int(request.args.get('pagina', 1))
-    por_pagina = 10
+    por_pagina = 15
     subquery = db.session.query(Canal.serie_nome, db.func.min(Canal.id).label('id')).filter_by(tipo='serie').group_by(Canal.serie_nome).subquery()
     series = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id).order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
@@ -265,7 +286,7 @@ def api_series_lista():
 @app.route('/api/tv/lista')
 def api_tv_lista():
     pagina = int(request.args.get('pagina', 1))
-    por_pagina = 10
+    por_pagina = 15
     canais = Canal.query.filter_by(tipo='tv').order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [c.serialize() for c in canais.items],
@@ -277,7 +298,7 @@ def api_tv_lista():
 @app.route('/api/radio/lista')
 def api_radio_lista():
     pagina = int(request.args.get('pagina', 1))
-    por_pagina = 10
+    por_pagina = 15
     radios = Canal.query.filter_by(tipo='radio').order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [r.serialize() for r in radios.items],
@@ -291,20 +312,36 @@ def api_busca():
     termo = request.args.get('q', '').strip()
     pagina = int(request.args.get('pagina', 1))
     por_pagina = 20
-
+    
     if not termo:
         return jsonify({'itens': [], 'total': 0, 'pagina': 1, 'total_paginas': 1})
-
+    
     query = Canal.query.filter(Canal.nome.ilike(f'%{termo}%'))
     total = query.count()
     paginacao = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
-
+    
     return jsonify({
         'itens': [c.serialize() for c in paginacao.items],
         'total': total,
         'pagina': pagina,
         'total_paginas': paginacao.pages
     })
+
+# Serialização para JSON
+def serialize_canal(canal):
+    return {
+        'id': canal.id,
+        'nome': canal.nome,
+        'url': canal.url,
+        'logo': canal.logo,
+        'tipo': canal.tipo,
+        'categoria': canal.categoria,
+        'temporada': canal.temporada,
+        'episodio': canal.episodio,
+        'serie_nome': canal.serie_nome
+    }
+
+Canal.serialize = serialize_canal
 
 # ---------- Favoritos ----------
 @app.route('/favoritar/<int:canal_id>', methods=['POST'])
@@ -319,20 +356,13 @@ def favoritar(canal_id):
         return jsonify({'status': 'removido'})
     else:
         canal = Canal.query.get(canal_id)
+        if not canal:
+            return jsonify({'erro': 'Canal não encontrado'}), 404
         fav = Favorito(usuario_id=usuario_id, canal_id=canal_id, tipo=canal.tipo)
         db.session.add(fav)
         db.session.commit()
         return jsonify({'status': 'adicionado'})
 
-@app.route('/api/favoritos')
-def api_favoritos():
-    if 'usuario_id' not in session:
-        return jsonify({'erro': 'Não autenticado'}), 401
-    usuario_id = session['usuario_id']
-    favs = Favorito.query.filter_by(usuario_id=usuario_id).all()
-    return jsonify([f.canal.serialize() for f in favs if f.canal])
-
-# ---------- Progresso ----------
 @app.route('/progresso/<int:canal_id>', methods=['POST'])
 def salvar_progresso(canal_id):
     if 'usuario_id' not in session:
@@ -347,7 +377,7 @@ def salvar_progresso(canal_id):
         progresso.duracao = duracao
         progresso.data_atualizacao = datetime.utcnow()
     else:
-        progresso = Progresso(usuario_id=usuario_id, canal_id=canal_id, tempo=tempo, duracao=duracao)
+        progresso = Progresso(usuario_id=usuario_id, canal_id=canal_id, tempo=tempo, duracao=duracao, data_atualizacao=datetime.utcnow())
         db.session.add(progresso)
     db.session.commit()
     return jsonify({'status': 'ok'})

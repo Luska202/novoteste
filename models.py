@@ -6,8 +6,8 @@ class Usuario(db.Model):
     nome = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
     senha = db.Column(db.String(200), nullable=False)
-    favoritos = db.relationship('Favorito', backref='usuario', lazy=True)
-    progressos = db.relationship('Progresso', backref='usuario', lazy=True)
+    favoritos = db.relationship('Favorito', backref='usuario', lazy='dynamic')
+    progressos = db.relationship('Progresso', backref='usuario', lazy='dynamic')
 
 class Canal(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -16,24 +16,13 @@ class Canal(db.Model):
     logo = db.Column(db.String(500))
     grupo = db.Column(db.String(100))
     tvg_id = db.Column(db.String(100))
-    tipo = db.Column(db.String(20))  # 'tv', 'serie', 'filme', 'radio'
+    tipo = db.Column(db.String(20))
     serie_nome = db.Column(db.String(200))
     temporada = db.Column(db.Integer)
     episodio = db.Column(db.Integer)
     categoria = db.Column(db.String(100))
-
-    def serialize(self):
-        return {
-            'id': self.id,
-            'nome': self.nome,
-            'url': self.url,
-            'logo': self.logo,
-            'tipo': self.tipo,
-            'categoria': self.categoria,
-            'temporada': self.temporada,
-            'episodio': self.episodio,
-            'serie_nome': self.serie_nome
-        }
+    favoritos = db.relationship('Favorito', backref='canal', lazy='dynamic')
+    progressos = db.relationship('Progresso', backref='canal', lazy='dynamic')
 
 class Favorito(db.Model):
     id = db.Column(db.Integer, primary_key=True)

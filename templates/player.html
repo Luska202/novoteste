@@ -19,10 +19,13 @@
         </video>
     </div>
     <div class="player-info">
-        <button id="favorito-btn" class="btn {% if is_favorito %}favorito-ativo{% endif %}" data-id="{{ canal.id }}">
+        <button id="favorito-btn" class="btn" data-id="{{ canal.id }}">
             <i class="fas fa-heart"></i> Favoritar
         </button>
         <p>Categoria: {{ canal.categoria or 'Geral' }}</p>
+        {% if proximo_episodio %}
+            <a href="{{ url_for('play', id=proximo_episodio.id) }}" class="btn">Próximo Episódio</a>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
@@ -33,28 +36,63 @@
     document.addEventListener('DOMContentLoaded', function() {
         const player = videojs('video-player');
         const canalId = {{ canal.id }};
+        const favoritoBtn = document.getElementById('favorito-btn');
+        let lastSavedTime = 0;
 
+        // Verificar estado inicial do favorito (opcional)
+        fetch('/api/favoritos')
+            .then(res => res.json())
+            .then(favoritos => {
+                if (favoritos.some(f => f.id === canalId)) {
+                    favoritoBtn.classList.add('favorito-ativo');
+                }
+            })
+            .catch(err => console.error('Erro ao verificar favorito:', err));
+
+        // Carregar progresso salvo
         fetch(`/progresso/${canalId}`)
             .then(res => res.json())
             .then(data => {
                 if (data.tempo > 0) {
-                    player.currentTime(data.tempo);
+                    player.one('loadedmetadata', function() {
+                        player.currentTime(data.tempo);
+                    });
                 }
             });
 
-        player.on('timeupdate', function() {
+        // Função para salvar progresso
+        function salvarProgresso(forcar = false) {
             const current = Math.floor(player.currentTime());
             const duration = Math.floor(player.duration());
-            if (current % 10 === 0 && current > 0) {
+            if (current > 0 && (forcar || Math.abs(current - lastSavedTime) >= 10)) {
                 fetch(`/progresso/${canalId}`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({tempo: current, duracao: duration})
-                });
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        lastSavedTime = current;
+                    }
+                })
+                .catch(err => console.error('Erro ao salvar progresso:', err));
             }
+        }
+
+        player.on('timeupdate', function() {
+            salvarProgresso();
         });
 
-        document.getElementById('favorito-btn').addEventListener('click', function() {
+        player.on('pause', function() {
+            salvarProgresso(true);
+        });
+
+        window.addEventListener('beforeunload', function() {
+            salvarProgresso(true);
+        });
+
+        favoritoBtn.addEventListener('click', function() {
             const id = this.dataset.id;
             fetch(`/favoritar/${id}`, {method: 'POST'})
                 .then(res => res.json())
@@ -64,7 +102,8 @@
                     } else {
                         this.classList.remove('favorito-ativo');
                     }
-                });
+                })
+                .catch(err => console.error('Erro ao favoritar:', err));
         });
     });
 </script>
