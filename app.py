@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 # ---------- Funções auxiliares para carregar JSON ----------
 def carregar_json_no_banco():
-    """Carrega os dados do arquivo m3u/lista.json para o banco, se o banco estiver vazio."""
     if Canal.query.first() is not None:
         logger.info("Banco já contém dados. Nenhuma carga realizada.")
         return
@@ -45,13 +44,12 @@ def carregar_json_no_banco():
     for item in dados:
         nome = item.get('nome', '')
         logo = item.get('logo', '')
-        tipo_original = item.get('tipo', '')  # 'Radio', 'Series', 'Filmes', etc.
+        tipo_original = item.get('tipo', '')
         categoria = item.get('categoria', '')
         temporada = item.get('temporada')
         episodio = item.get('episodio')
         url = item.get('url', '')
 
-        # Mapeia tipo
         if tipo_original.lower() == 'radio':
             tipo = 'radio'
         elif tipo_original.lower() == 'series':
@@ -65,7 +63,7 @@ def carregar_json_no_banco():
             nome=nome,
             url=url,
             logo=logo,
-            grupo='',  # não temos group-title original
+            grupo='',
             tvg_id='',
             tipo=tipo,
             categoria=categoria,
@@ -73,7 +71,6 @@ def carregar_json_no_banco():
             episodio=episodio if episodio is not None else None
         )
         if tipo == 'serie':
-            # Extrai nome base da série (remove SxxExx se presente)
             import re
             match = re.search(r'S(\d+)E(\d+)', nome, re.IGNORECASE)
             if match:
@@ -125,7 +122,6 @@ def logout():
     session.pop('usuario_id', None)
     return redirect(url_for('login'))
 
-# ---------- Páginas de categorias ----------
 @app.route('/tv')
 def tv():
     if 'usuario_id' not in session:
@@ -193,17 +189,19 @@ def perfil():
     usuario = Usuario.query.get(session['usuario_id'])
     return render_template('perfil.html', usuario=usuario)
 
-# ---------- API para dados dinâmicos ----------
+@app.route('/busca')
+def busca():
+    termo = request.args.get('q', '')
+    return render_template('resultados.html', termo=termo)
+
+# ---------- API ----------
 def get_random_items(tipo, limite=8):
-    """Retorna itens aleatórios de um tipo."""
     from sqlalchemy.sql.expression import func
     return Canal.query.filter_by(tipo=tipo).order_by(func.random()).limit(limite).all()
 
 def get_recentemente_assistidos(usuario_id, limite=8):
-    """Retorna os últimos canais assistidos pelo usuário."""
     progressos = Progresso.query.filter_by(usuario_id=usuario_id).order_by(Progresso.data_atualizacao.desc()).limit(limite).all()
-    canais = [p.canal for p in progressos if p.canal]
-    return canais
+    return [p.canal for p in progressos if p.canal]
 
 @app.route('/api/inicio')
 def api_inicio():
@@ -221,19 +219,16 @@ def api_inicio():
 
 @app.route('/api/filmes/categoria/<categoria>')
 def api_filmes_categoria(categoria):
-    """Retorna até 8 filmes de uma categoria específica."""
     filmes = Canal.query.filter_by(tipo='filme', categoria=categoria).limit(8).all()
     return jsonify([f.serialize() for f in filmes])
 
 @app.route('/api/filmes/lancamento')
 def api_filmes_lancamento():
-    """Simula lançamentos: pega os últimos 8 filmes adicionados (por ID)."""
     filmes = Canal.query.filter_by(tipo='filme').order_by(Canal.id.desc()).limit(8).all()
     return jsonify([f.serialize() for f in filmes])
 
 @app.route('/api/filmes/lista')
 def api_filmes_lista():
-    """Retorna lista paginada de filmes ordenada por nome A-Z."""
     pagina = int(request.args.get('pagina', 1))
     por_pagina = 10
     filmes = Canal.query.filter_by(tipo='filme').order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
@@ -258,7 +253,6 @@ def api_series_lancamento():
 def api_series_lista():
     pagina = int(request.args.get('pagina', 1))
     por_pagina = 10
-    # Agrupa por série (nome base) para não repetir na lista principal
     subquery = db.session.query(Canal.serie_nome, db.func.min(Canal.id).label('id')).filter_by(tipo='serie').group_by(Canal.serie_nome).subquery()
     series = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id).order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
@@ -292,21 +286,25 @@ def api_radio_lista():
         'total_paginas': radios.pages
     })
 
-# Serialização para JSON
-def serialize_canal(canal):
-    return {
-        'id': canal.id,
-        'nome': canal.nome,
-        'url': canal.url,
-        'logo': canal.logo,
-        'tipo': canal.tipo,
-        'categoria': canal.categoria,
-        'temporada': canal.temporada,
-        'episodio': canal.episodio,
-        'serie_nome': canal.serie_nome
-    }
+@app.route('/api/busca')
+def api_busca():
+    termo = request.args.get('q', '').strip()
+    pagina = int(request.args.get('pagina', 1))
+    por_pagina = 20
 
-Canal.serialize = serialize_canal
+    if not termo:
+        return jsonify({'itens': [], 'total': 0, 'pagina': 1, 'total_paginas': 1})
+
+    query = Canal.query.filter(Canal.nome.ilike(f'%{termo}%'))
+    total = query.count()
+    paginacao = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+
+    return jsonify({
+        'itens': [c.serialize() for c in paginacao.items],
+        'total': total,
+        'pagina': pagina,
+        'total_paginas': paginacao.pages
+    })
 
 # ---------- Favoritos ----------
 @app.route('/favoritar/<int:canal_id>', methods=['POST'])
@@ -363,32 +361,6 @@ def obter_progresso(canal_id):
     if progresso:
         return jsonify({'tempo': progresso.tempo, 'duracao': progresso.duracao})
     return jsonify({'tempo': 0, 'duracao': 0})
-
-@app.route('/api/busca')
-def api_busca():
-    termo = request.args.get('q', '').strip()
-    pagina = int(request.args.get('pagina', 1))
-    por_pagina = 20  # pode ajustar
-    
-    if not termo:
-        return jsonify({'itens': [], 'total': 0, 'pagina': 1, 'total_paginas': 1})
-    
-    # Busca em todos os tipos, ignorando maiúsculas/minúsculas
-    query = Canal.query.filter(Canal.nome.ilike(f'%{termo}%'))
-    total = query.count()
-    paginacao = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
-    
-    return jsonify({
-        'itens': [c.serialize() for c in paginacao.items],
-        'total': total,
-        'pagina': pagina,
-        'total_paginas': paginacao.pages
-    })
-
-@app.route('/busca')
-def busca():
-    termo = request.args.get('q', '')
-    return render_template('resultados.html', termo=termo)
 
 # ---------- Proxy ----------
 @app.route('/proxy')

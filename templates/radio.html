@@ -1,32 +1,46 @@
 {% extends "base.html" %}
-{% block title %}{{ serie_nome }}{% endblock %}
+{% block title %}Rádio{% endblock %}
 {% block content %}
-<h1>{{ serie_nome }}</h1>
-<div id="temporadas">
-    {% for temp, epis in temporadas.items()|sort %}
-    <div class="temporada">
-        <h2 onclick="toggleEpisodios(this)">Temporada {{ temp }} <i class="fas fa-chevron-down"></i></h2>
-        <div class="episodios" style="display: none;">
-            {% for ep in epis|sort(attribute='episodio') %}
-            <div class="episodio">
-                <a href="{{ url_for('play', id=ep.id) }}">Episódio {{ ep.episodio }}: {{ ep.nome }}</a>
-                <button class="favorito" data-id="{{ ep.id }}">⭐</button>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endfor %}
+<h1 class="section-title">Rádios</h1>
+
+<div class="search-container">
+    <input type="text" id="search-input" class="search-input" placeholder="Pesquisar rádios...">
+    <button id="search-btn" class="search-btn">Pesquisar</button>
 </div>
+
+<h2 class="section-title">Todas as rádios (A-Z)</h2>
+<div class="category-grid" id="todas-radios"></div>
+<div class="load-more-container">
+    <button id="load-more" class="btn btn-outline" style="display: none;">Carregar Mais</button>
+</div>
+{% endblock %}
+{% block scripts %}
 <script>
-    function toggleEpisodios(element) {
-        const episodios = element.nextElementSibling;
-        if (episodios.style.display === 'none') {
-            episodios.style.display = 'block';
-            element.querySelector('i').className = 'fas fa-chevron-up';
-        } else {
-            episodios.style.display = 'none';
-            element.querySelector('i').className = 'fas fa-chevron-down';
-        }
+    function carregarLista(pagina) {
+        fetch(`/api/radio/lista?pagina=${pagina}`)
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('todas-radios');
+                data.itens.forEach(item => {
+                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'radio'));
+                });
+                const btn = document.getElementById('load-more');
+                if (data.pagina < data.total_paginas) {
+                    btn.style.display = 'block';
+                    btn.dataset.page = data.pagina + 1;
+                } else {
+                    btn.style.display = 'none';
+                }
+            });
     }
+
+    carregarLista(1);
+
+    document.getElementById('load-more').addEventListener('click', function() {
+        const nextPage = parseInt(this.dataset.page);
+        carregarLista(nextPage);
+    });
+
+    window.setupSearch('search-input', 'search-btn');
 </script>
 {% endblock %}

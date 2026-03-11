@@ -1,136 +1,75 @@
 {% extends "base.html" %}
 {% block title %}Séries{% endblock %}
 {% block content %}
-<h1>Séries</h1>
+<h1 class="section-title">Séries</h1>
 
-<div class="search-bar">
-    <input type="text" id="search-input" placeholder="Pesquisar séries...">
-    <button id="search-btn">Pesquisar</button>
+<div class="search-container">
+    <input type="text" id="search-input" class="search-input" placeholder="Pesquisar séries...">
+    <button id="search-btn" class="search-btn">Pesquisar</button>
 </div>
 
-<div class="categorias-grid">
-    <div class="categoria-row">
-        <h2>Lançamento</h2>
-        <div class="horizontal-scroll" id="lancamentos"></div>
-    </div>
-    <div class="categoria-row">
-        <h2>Comédia</h2>
-        <div class="horizontal-scroll" id="comedia"></div>
-    </div>
-    <div class="categoria-row">
-        <h2>Ação (Thriller)</h2>
-        <div class="horizontal-scroll" id="acao"></div>
-    </div>
-    <div class="categoria-row">
-        <h2>Romance</h2>
-        <div class="horizontal-scroll" id="romance"></div>
-    </div>
-</div>
+<h2 class="section-title">Lançamento</h2>
+<div class="horizontal-scroll" id="lancamento"></div>
 
-<h2>Todas as séries</h2>
-<div class="grid" id="series-lista"></div>
-<div class="pagination">
-    <button id="carregar-mais" data-pagina="1" data-total="">Carregar mais</button>
+<h2 class="section-title">Comédia</h2>
+<div class="horizontal-scroll" id="comedia"></div>
+
+<h2 class="section-title">Drama</h2>
+<div class="horizontal-scroll" id="drama"></div>
+
+<h2 class="section-title">Ação</h2>
+<div class="horizontal-scroll" id="acao"></div>
+
+<h2 class="section-title">Todas as séries (A-Z)</h2>
+<div class="category-grid" id="todas-series"></div>
+<div class="load-more-container">
+    <button id="load-more" class="btn btn-outline" style="display: none;">Carregar Mais</button>
 </div>
 {% endblock %}
-
 {% block scripts %}
 <script>
-    let currentPage = 1;
-    let totalPages = 1;
-    let searchTerm = '';
-
-    document.addEventListener('DOMContentLoaded', function() {
-        carregarCategorias();
-        carregarListaSeries(1, '');
-
-        document.getElementById('search-btn').addEventListener('click', function() {
-            searchTerm = document.getElementById('search-input').value.trim();
-            currentPage = 1;
-            document.getElementById('series-lista').innerHTML = '';
-            carregarListaSeries(currentPage, searchTerm);
-        });
-
-        document.getElementById('search-input').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                document.getElementById('search-btn').click();
-            }
-        });
-
-        document.getElementById('carregar-mais').addEventListener('click', function() {
-            if (currentPage < totalPages) {
-                currentPage++;
-                carregarListaSeries(currentPage, searchTerm);
-            }
-        });
-    });
-
-    function carregarCategorias() {
-        fetch('/api/series/lancamento')
-            .then(res => res.json())
-            .then(data => preencherLinha('lancamentos', data, 'serie'));
-
-        fetch('/api/series/categoria/Comédia')
-            .then(res => res.json())
-            .then(data => preencherLinha('comedia', data, 'serie'));
-
-        fetch('/api/series/categoria/Thriller')
-            .then(res => res.json())
-            .then(data => preencherLinha('acao', data, 'serie'));
-
-        fetch('/api/series/categoria/Romance')
-            .then(res => res.json())
-            .then(data => preencherLinha('romance', data, 'serie'));
-    }
-
-    function carregarListaSeries(pagina, termo) {
-        let url = `/api/series/lista?pagina=${pagina}`;
+    function carregarCategoria(url, containerId) {
         fetch(url)
             .then(res => res.json())
             .then(data => {
-                totalPages = data.total_paginas;
-                let itens = data.itens;
-                if (termo) {
-                    itens = itens.filter(item => item.nome.toLowerCase().includes(termo.toLowerCase()));
-                }
-                exibirSeries(itens, pagina === 1);
-                if (pagina >= totalPages) {
-                    document.getElementById('carregar-mais').style.display = 'none';
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                data.forEach(item => {
+                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'serie'));
+                });
+            });
+    }
+
+    carregarCategoria('/api/series/lancamento', 'lancamento');
+    carregarCategoria('/api/series/categoria/Comédia', 'comedia');
+    carregarCategoria('/api/series/categoria/Drama', 'drama');
+    carregarCategoria('/api/series/categoria/Ação', 'acao');
+
+    function carregarLista(pagina) {
+        fetch(`/api/series/lista?pagina=${pagina}`)
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('todas-series');
+                data.itens.forEach(item => {
+                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'serie'));
+                });
+                const btn = document.getElementById('load-more');
+                if (data.pagina < data.total_paginas) {
+                    btn.style.display = 'block';
+                    btn.dataset.page = data.pagina + 1;
                 } else {
-                    document.getElementById('carregar-mais').style.display = 'block';
+                    btn.style.display = 'none';
                 }
             });
     }
 
-    function exibirSeries(itens, limpar) {
-        const container = document.getElementById('series-lista');
-        if (limpar) container.innerHTML = '';
-        itens.forEach(item => {
-            const card = document.createElement('div');
-            card.className = 'card';
-            card.innerHTML = `
-                <img src="${item.logo || '/static/images/placeholder.png'}" alt="${item.nome}" onerror="this.src='/static/images/placeholder.png'">
-                <h3>${item.nome}</h3>
-                <a href="/serie/${encodeURIComponent(item.serie_nome)}" class="btn">Ver episódios</a>
-                <button class="favorito" data-id="${item.id}">⭐</button>
-            `;
-            container.appendChild(card);
-        });
-    }
+    carregarLista(1);
 
-    function preencherLinha(elementId, itens, tipo) {
-        const container = document.getElementById(elementId);
-        container.innerHTML = '';
-        itens.forEach(item => {
-            const card = document.createElement('div');
-            card.className = 'card-horizontal';
-            card.innerHTML = `
-                <img src="${item.logo || '/static/images/placeholder.png'}" alt="${item.nome}" onerror="this.src='/static/images/placeholder.png'">
-                <h4>${item.nome}</h4>
-                <a href="/play/${item.id}" class="btn-small">Assistir</a>
-            `;
-            container.appendChild(card);
-        });
-    }
+    document.getElementById('load-more').addEventListener('click', function() {
+        const nextPage = parseInt(this.dataset.page);
+        carregarLista(nextPage);
+    });
+
+    window.setupSearch('search-input', 'search-btn');
 </script>
 {% endblock %}

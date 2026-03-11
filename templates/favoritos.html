@@ -1,29 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Favoritos{% endblock %}
 {% block content %}
-<h1>Meus Favoritos</h1>
-<div class="grid" id="favoritos-lista"></div>
+<h1 class="section-title">Meus Favoritos</h1>
+<div class="category-grid" id="favoritos-grid">
+    <!-- preenchido via API -->
+</div>
 {% endblock %}
-
 {% block scripts %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        fetch('/api/favoritos')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('favoritos-lista');
-                data.forEach(item => {
-                    const card = document.createElement('div');
-                    card.className = 'card';
-                    card.innerHTML = `
-                        <img src="${item.logo || '/static/images/placeholder.png'}" alt="${item.nome}">
-                        <h3>${item.nome}</h3>
-                        <a href="/play/${item.id}" class="btn">Assistir</a>
-                        <button class="favorito" data-id="${item.id}">⭐ Remover</button>
-                    `;
-                    container.appendChild(card);
-                });
+    fetch('/api/favoritos')
+        .then(res => res.json())
+        .then(data => {
+            const grid = document.getElementById('favoritos-grid');
+            if (data.length === 0) {
+                grid.innerHTML = '<p>Você ainda não tem favoritos.</p>';
+                return;
+            }
+            data.forEach(item => {
+                grid.insertAdjacentHTML('beforeend', window.cardTemplate(item, item.tipo));
             });
-    });
+        });
 </script>
 {% endblock %}

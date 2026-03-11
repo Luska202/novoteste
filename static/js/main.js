@@ -9,36 +9,23 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Funções para carregar dados via API (serão usadas nas páginas específicas)
-window.loadItems = function(url, containerId, templateFn, loadMoreBtnId, page = 1) {
-    fetch(`${url}?pagina=${page}`)
-        .then(res => res.json())
-        .then(data => {
-            const container = document.getElementById(containerId);
-            data.itens.forEach(item => {
-                container.insertAdjacentHTML('beforeend', templateFn(item));
-            });
-            if (loadMoreBtnId) {
-                const btn = document.getElementById(loadMoreBtnId);
-                if (data.pagina < data.total_paginas) {
-                    btn.style.display = 'block';
-                    btn.dataset.page = data.pagina + 1;
-                } else {
-                    btn.style.display = 'none';
-                }
-            }
-        });
-};
-
-// Template para cards (exemplo)
-window.cardTemplate = function(item) {
+// Template para cards com link para detalhe
+window.cardTemplate = function(item, tipo) {
+    let link = '';
+    if (tipo === 'filme') {
+        link = `/filme/${item.id}`;
+    } else if (tipo === 'serie') {
+        link = `/serie/${encodeURIComponent(item.serie_nome || item.nome)}`;
+    } else {
+        link = `/play/${item.id}`; // para TV, rádio, etc.
+    }
     return `
-        <div class="card" data-id="${item.id}">
+        <div class="card" onclick="window.location.href='${link}'">
             <img src="${item.logo || '/static/images/placeholder.png'}" alt="${item.nome}" onerror="this.src='/static/images/placeholder.png'">
             <div class="card-body">
                 <h3 class="card-title">${item.nome}</h3>
-                <a href="/play/${item.id}" class="btn btn-small">Assistir</a>
-                <button class="favorito-btn" data-id="${item.id}"><i class="fas fa-heart"></i></button>
+                <a href="${link}" class="btn btn-small" onclick="event.stopPropagation();">Assistir</a>
+                <button class="favorito-btn" data-id="${item.id}" onclick="event.stopPropagation();"><i class="fas fa-heart"></i></button>
             </div>
         </div>
     `;
@@ -48,6 +35,7 @@ window.cardTemplate = function(item) {
 document.addEventListener('click', function(e) {
     if (e.target.closest('.favorito-btn')) {
         e.preventDefault();
+        e.stopPropagation();
         const btn = e.target.closest('.favorito-btn');
         const id = btn.dataset.id;
         fetch(`/favoritar/${id}`, { method: 'POST' })
@@ -62,7 +50,7 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Função para pesquisa com Enter
+// Função para pesquisa com Enter - redireciona
 window.setupSearch = function(inputId, btnId) {
     const input = document.getElementById(inputId);
     const btn = document.getElementById(btnId);

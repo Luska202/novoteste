@@ -29,7 +29,7 @@
                 }
                 
                 data.itens.forEach(item => {
-                    grid.insertAdjacentHTML('beforeend', window.cardTemplate(item));
+                    grid.insertAdjacentHTML('beforeend', window.cardTemplate(item, item.tipo));
                 });
                 
                 const btn = document.getElementById('load-more');

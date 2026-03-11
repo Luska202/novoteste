@@ -34,7 +34,6 @@
         const player = videojs('video-player');
         const canalId = {{ canal.id }};
 
-        // Carregar progresso
         fetch(`/progresso/${canalId}`)
             .then(res => res.json())
             .then(data => {
@@ -43,7 +42,6 @@
                 }
             });
 
-        // Salvar progresso a cada 10 segundos
         player.on('timeupdate', function() {
             const current = Math.floor(player.currentTime());
             const duration = Math.floor(player.duration());
@@ -56,7 +54,6 @@
             }
         });
 
-        // Favoritar
         document.getElementById('favorito-btn').addEventListener('click', function() {
             const id = this.dataset.id;
             fetch(`/favoritar/${id}`, {method: 'POST'})

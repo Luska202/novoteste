@@ -1,56 +1,45 @@
 {% extends "base.html" %}
 {% block title %}Início{% endblock %}
 {% block content %}
-<h1>Para você</h1>
+<h1 class="section-title">Para você</h1>
 
-<section class="row-section">
-    <h2>Filmes recomendados <span class="ver-mais" onclick="location.href='{{ url_for('filmes') }}'">Ver mais</span></h2>
-    <div class="horizontal-scroll" id="filmes-recomendados"></div>
-</section>
+<h2 class="section-title">Filmes recomendados</h2>
+<div class="horizontal-scroll" id="filmes-recomendados"></div>
 
-<section class="row-section">
-    <h2>Séries recomendadas <span class="ver-mais" onclick="location.href='{{ url_for('series') }}'">Ver mais</span></h2>
-    <div class="horizontal-scroll" id="series-recomendadas"></div>
-</section>
+<h2 class="section-title">Séries recomendadas</h2>
+<div class="horizontal-scroll" id="series-recomendadas"></div>
 
-<section class="row-section">
-    <h2>Assistido recentemente</h2>
-    <div class="horizontal-scroll" id="assistido-recentemente"></div>
-</section>
+<h2 class="section-title">Assistido recentemente</h2>
+<div class="horizontal-scroll" id="recentes"></div>
 {% endblock %}
-
 {% block scripts %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        carregarInicio();
-    });
-
-    function carregarInicio() {
-        fetch('/api/inicio')
+    function carregarSecao(url, containerId) {
+        fetch(url)
             .then(res => res.json())
             .then(data => {
-                preencherLinha('filmes-recomendados', data.filmes_recomendados, 'filme');
-                preencherLinha('series-recomendadas', data.series_recomendadas, 'serie');
-                preencherLinha('assistido-recentemente', data.assistido_recentemente, 'todos');
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                // Ajuste conforme o retorno da API /api/inicio
+                // Supondo que data.filmes_recomendados, etc.
+                if (containerId === 'filmes-recomendados') {
+                    data.filmes_recomendados.forEach(item => {
+                        container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'filme'));
+                    });
+                } else if (containerId === 'series-recomendadas') {
+                    data.series_recomendadas.forEach(item => {
+                        container.insertAdjacentHTML('beforeend', window.cardTemplate(item, 'serie'));
+                    });
+                } else if (containerId === 'recentes') {
+                    data.assistido_recentemente.forEach(item => {
+                        container.insertAdjacentHTML('beforeend', window.cardTemplate(item, item.tipo));
+                    });
+                }
             });
     }
 
-    function preencherLinha(elementId, itens, tipo) {
-        const container = document.getElementById(elementId);
-        container.innerHTML = '';
-        itens.forEach(item => {
-            const card = document.createElement('div');
-            card.className = 'card-horizontal';
-            card.innerHTML = `
-                <img src="${item.logo || '/static/images/placeholder.png'}" alt="${item.nome}" onerror="this.src='/static/images/placeholder.png'">
-                <h4>${item.nome}</h4>
-                <a href="/play/${item.id}" class="btn-small">Assistir</a>
-            `;
-            container.appendChild(card);
-        });
-        if (itens.length === 0) {
-            container.innerHTML = '<p>Nenhum item encontrado.</p>';
-        }
-    }
+    carregarSecao('/api/inicio', 'filmes-recomendados');
+    carregarSecao('/api/inicio', 'series-recomendadas');
+    carregarSecao('/api/inicio', 'recentes');
 </script>
 {% endblock %}

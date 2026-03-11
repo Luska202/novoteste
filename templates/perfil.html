@@ -2,7 +2,7 @@
 {% block title %}Meu Perfil{% endblock %}
 {% block content %}
 <div class="profile-container">
-    <h1>Meu Perfil</h1>
+    <h1 class="section-title">Meu Perfil</h1>
     <div class="profile-card">
         <div class="profile-info">
             <p><strong>Nome:</strong> {{ usuario.nome }}</p>
@@ -18,12 +18,11 @@
 {% endblock %}
 {% block scripts %}
 <script>
-    // Carregar estatísticas via API
     fetch('/api/favoritos')
         .then(res => res.json())
         .then(data => {
             document.getElementById('fav-count').textContent = data.length;
         });
-    // Poderia carregar contagem de progresso também
+    // Poderia contar progresso também
 </script>
 {% endblock %}

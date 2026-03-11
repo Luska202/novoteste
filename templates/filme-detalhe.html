@@ -1,9 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ filme.nome }}{% endblock %}
 {% block content %}
-<h1>{{ filme.nome }}</h1>
-<img src="{{ filme.logo }}" alt="{{ filme.nome }}" style="max-width:300px">
-<p>Categoria: {{ filme.categoria }}</p>
-<a href="{{ url_for('play', id=filme.id) }}" class="btn">Assistir</a>
-<button class="favorito" data-id="{{ filme.id }}">⭐ Favoritar</button>
+<div class="filme-detalhe">
+    <h1>{{ filme.nome }}</h1>
+    <div class="filme-info">
+        <img src="{{ filme.logo }}" alt="{{ filme.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
+        <div class="filme-detalhes">
+            <p>Categoria: {{ filme.categoria }}</p>
+            <a href="{{ url_for('play', id=filme.id) }}" class="btn">Assistir</a>
+            <button class="favorito-btn" data-id="{{ filme.id }}"><i class="fas fa-heart"></i> Favoritar</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
