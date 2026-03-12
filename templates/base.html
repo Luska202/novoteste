@@ -3,25 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}IPTV Player{% endblock %}</title>
+    <title>{% block title %}Streaming 2.0{% endblock %}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <header>
-        <nav class="navbar">
+        <nav class="navbar" id="navbar">
             <div class="nav-brand">
-                <a href="{{ url_for('index') }}">🎬 IPTV</a>
+                <a href="{{ url_for('index') }}">Streaming 2.0</a>
             </div>
             <ul class="nav-menu" id="nav-menu">
-                <li><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Início</a></li>
-                <li><a href="{{ url_for('tv') }}"><i class="fas fa-tv"></i> TV</a></li>
-                <li><a href="{{ url_for('series') }}"><i class="fas fa-film"></i> Séries</a></li>
-                <li><a href="{{ url_for('filmes') }}"><i class="fas fa-video"></i> Filmes</a></li>
-                <li><a href="{{ url_for('radio') }}"><i class="fas fa-music"></i> Rádio</a></li>
-                <li><a href="{{ url_for('favoritos') }}"><i class="fas fa-heart"></i> Favoritos</a></li>
-                <li><a href="{{ url_for('perfil') }}"><i class="fas fa-user"></i> Perfil</a></li>
-                <li><a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
+                <li><a href="{{ url_for('index') }}">Início</a></li>
+                <li><a href="{{ url_for('tv') }}">TV</a></li>
+                <li><a href="{{ url_for('series') }}">Séries</a></li>
+                <li><a href="{{ url_for('filmes') }}">Filmes</a></li>
+                <li><a href="{{ url_for('radio') }}">Rádio</a></li>
+                <li><a href="{{ url_for('favoritos') }}">Minha Lista</a></li>
+                <li><a href="{{ url_for('perfil') }}"><i class="fas fa-user"></i></a></li>
+                <li><a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i></a></li>
             </ul>
             <div class="nav-toggle" id="nav-toggle">
                 <i class="fas fa-bars"></i>

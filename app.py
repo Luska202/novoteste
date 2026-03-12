@@ -6,6 +6,7 @@ from database import init_db, db
 from models import Usuario, Canal, Favorito, Progresso
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+from sqlalchemy import func, desc
 import requests
 
 app = Flask(__name__)
@@ -20,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 # ---------- Funções auxiliares para carregar JSON ----------
 def carregar_json_no_banco():
-    """Carrega os dados do arquivo m3u/lista.json para o banco, se o banco estiver vazio."""
     if Canal.query.first() is not None:
         logger.info("Banco já contém dados. Nenhuma carga realizada.")
         return
@@ -51,7 +51,6 @@ def carregar_json_no_banco():
         episodio = item.get('episodio')
         url = item.get('url', '')
 
-        # Mapeia tipo
         if tipo_original.lower() == 'radio':
             tipo = 'radio'
         elif tipo_original.lower() == 'series':
@@ -126,26 +125,18 @@ def logout():
 
 @app.route('/tv')
 def tv():
-    if 'usuario_id' not in session:
-        return redirect(url_for('login'))
     return render_template('tv.html')
 
 @app.route('/series')
 def series():
-    if 'usuario_id' not in session:
-        return redirect(url_for('login'))
     return render_template('series.html')
 
 @app.route('/filmes')
 def filmes():
-    if 'usuario_id' not in session:
-        return redirect(url_for('login'))
     return render_template('filmes.html')
 
 @app.route('/radio')
 def radio():
-    if 'usuario_id' not in session:
-        return redirect(url_for('login'))
     return render_template('radio.html')
 
 @app.route('/serie/<nome>')
@@ -178,7 +169,7 @@ def play(id):
     canal = Canal.query.get_or_404(id)
     proximo = None
     if canal.tipo == 'serie' and canal.serie_nome and canal.temporada is not None and canal.episodio is not None:
-        # Busca próximo episódio na mesma série (próximo da mesma temporada ou primeira da próxima)
+        # Busca próximo episódio na mesma série
         proximo = Canal.query.filter(
             Canal.tipo=='serie',
             Canal.serie_nome == canal.serie_nome,
@@ -207,15 +198,115 @@ def busca():
     termo = request.args.get('q', '')
     return render_template('resultados.html', termo=termo)
 
-# ---------- API para dados dinâmicos ----------
+
+
+# ---------- API ----------
+def filtrar_adultos(query):
+    """Exclui itens com categoria 'Adultos'."""
+    return query.filter((Canal.categoria != 'Adultos') | (Canal.categoria.is_(None)))
+
 def get_random_items(tipo, limite=15):
     from sqlalchemy.sql.expression import func
-    return Canal.query.filter_by(tipo=tipo).order_by(func.random()).limit(limite).all()
+    query = Canal.query.filter_by(tipo=tipo)
+    query = filtrar_adultos(query)
+    return query.order_by(func.random()).limit(limite).all()
+
+def get_mais_assistidos_global(limite=5):
+    """
+    Retorna os itens mais assistidos globalmente (todos os usuários).
+    Para filmes: conta progressos por canal.
+    Para séries: agrupa por série (serie_nome) e conta progressos de todos os episódios,
+                 e retorna o episódio mais recente da série (para link direto).
+    """
+    # Contagem de progressos por item (filmes e episódios)
+    progress_counts = db.session.query(
+        Progresso.canal_id,
+        func.count(Progresso.id).label('total')
+    ).group_by(Progresso.canal_id).subquery()
+
+    # Join com Canal para obter dados
+    query = db.session.query(Canal, progress_counts.c.total).join(
+        progress_counts, Canal.id == progress_counts.c.canal_id
+    )
+
+    # Separar filmes e séries
+    filmes = query.filter(Canal.tipo == 'filme').order_by(desc(progress_counts.c.total)).all()
+    series_raw = query.filter(Canal.tipo == 'serie').all()
+
+    # Para séries, agrupar por serie_nome
+    series_map = {}
+    for canal, total in series_raw:
+        if canal.serie_nome not in series_map:
+            series_map[canal.serie_nome] = {
+                'total': 0,
+                'latest': canal  # vamos pegar o último episódio (maior id) para representar
+            }
+        series_map[canal.serie_nome]['total'] += total
+        # Manter o episódio com maior id (último adicionado)
+        if canal.id > series_map[canal.serie_nome]['latest'].id:
+            series_map[canal.serie_nome]['latest'] = canal
+
+    # Converter para lista ordenada
+    series_list = []
+    for nome, data in series_map.items():
+        series_list.append((data['latest'], data['total']))
+
+    # Ordenar séries por total decrescente
+    series_list.sort(key=lambda x: x[1], reverse=True)
+
+    # Combinar filmes e séries e ordenar globalmente
+    combined = [(canal, total) for canal, total in filmes] + series_list
+    combined.sort(key=lambda x: x[1], reverse=True)
+
+    # Retornar apenas os canais (objetos) no limite
+    return [c[0] for c in combined[:limite]]
+
+@app.route('/api/mais-assistidos')
+def api_mais_assistidos():
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    itens = get_mais_assistidos_global(5)
+    return jsonify([c.serialize() for c in itens])
 
 def get_recentemente_assistidos(usuario_id, limite=15):
-    progressos = Progresso.query.filter_by(usuario_id=usuario_id).order_by(Progresso.data_atualizacao.desc()).limit(limite).all()
-    # Garantir que o canal ainda existe (caso tenha sido deletado)
-    return [p.canal for p in progressos if p.canal is not None]
+    """
+    Retorna os itens assistidos recentemente, agrupando séries (apenas o último episódio de cada série).
+    """
+    # Subconsulta para séries
+    subquery_series = db.session.query(
+        Progresso.canal_id,
+        Progresso.data_atualizacao,
+        func.row_number().over(
+            partition_by=Canal.serie_nome,
+            order_by=desc(Progresso.data_atualizacao)
+        ).label('rn')
+    ).join(Canal, Progresso.canal_id == Canal.id).filter(
+        Progresso.usuario_id == usuario_id,
+        Canal.tipo == 'serie'
+    ).subquery()
+
+    series_recentes = db.session.query(Progresso).join(
+        subquery_series,
+        (Progresso.canal_id == subquery_series.c.canal_id) &
+        (subquery_series.c.rn == 1)
+    ).all()
+
+    # Filmes e outros (sem agrupamento)
+    outros = Progresso.query.join(Canal).filter(
+        Progresso.usuario_id == usuario_id,
+        Canal.tipo != 'serie'
+    ).order_by(desc(Progresso.data_atualizacao)).all()
+
+    todos = series_recentes + outros
+    todos.sort(key=lambda p: p.data_atualizacao, reverse=True)
+    return [p.canal for p in todos[:limite] if p.canal]
+
+@app.route('/api/destaque')
+def api_destaque():
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    itens = get_mais_assistidos(5)
+    return jsonify([c.serialize() for c in itens])
 
 @app.route('/api/inicio')
 def api_inicio():
@@ -233,19 +324,25 @@ def api_inicio():
 
 @app.route('/api/filmes/categoria/<categoria>')
 def api_filmes_categoria(categoria):
-    filmes = Canal.query.filter_by(tipo='filme', categoria=categoria).limit(15).all()
+    query = Canal.query.filter_by(tipo='filme', categoria=categoria)
+    query = filtrar_adultos(query)
+    filmes = query.limit(15).all()
     return jsonify([f.serialize() for f in filmes])
 
 @app.route('/api/filmes/lancamento')
 def api_filmes_lancamento():
-    filmes = Canal.query.filter_by(tipo='filme').order_by(Canal.id.desc()).limit(15).all()
+    query = Canal.query.filter_by(tipo='filme')
+    query = filtrar_adultos(query)
+    filmes = query.order_by(Canal.id.desc()).limit(15).all()
     return jsonify([f.serialize() for f in filmes])
 
 @app.route('/api/filmes/lista')
 def api_filmes_lista():
     pagina = int(request.args.get('pagina', 1))
-    por_pagina = 15
-    filmes = Canal.query.filter_by(tipo='filme').order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    por_pagina = 10
+    query = Canal.query.filter_by(tipo='filme')
+    query = filtrar_adultos(query)
+    filmes = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [f.serialize() for f in filmes.items],
         'total': filmes.total,
@@ -255,27 +352,32 @@ def api_filmes_lista():
 
 @app.route('/api/series/categoria/<categoria>')
 def api_series_categoria(categoria):
-    # Para séries, precisamos retornar séries distintas (não episódios) dessa categoria
     from sqlalchemy import func
     subquery = db.session.query(Canal.serie_nome, db.func.min(Canal.id).label('id')).filter(
         Canal.tipo=='serie', Canal.categoria==categoria).group_by(Canal.serie_nome).subquery()
-    series = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id).limit(15).all()
+    query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
+    query = filtrar_adultos(query)
+    series = query.limit(15).all()
     return jsonify([s.serialize() for s in series])
 
 @app.route('/api/series/lancamento')
 def api_series_lancamento():
-    # Últimas séries adicionadas (considerando o primeiro episódio de cada série)
     from sqlalchemy import func
     subquery = db.session.query(Canal.serie_nome, db.func.min(Canal.id).label('id')).filter_by(tipo='serie').group_by(Canal.serie_nome).subquery()
-    series = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id).order_by(Canal.id.desc()).limit(15).all()
+    query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
+    query = filtrar_adultos(query)
+    series = query.order_by(Canal.id.desc()).limit(15).all()
     return jsonify([s.serialize() for s in series])
 
 @app.route('/api/series/lista')
 def api_series_lista():
     pagina = int(request.args.get('pagina', 1))
-    por_pagina = 15
+    por_pagina = 10
+    from sqlalchemy import func
     subquery = db.session.query(Canal.serie_nome, db.func.min(Canal.id).label('id')).filter_by(tipo='serie').group_by(Canal.serie_nome).subquery()
-    series = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id).order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
+    query = filtrar_adultos(query)
+    series = query.order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [s.serialize() for s in series.items],
         'total': series.total,
@@ -286,8 +388,10 @@ def api_series_lista():
 @app.route('/api/tv/lista')
 def api_tv_lista():
     pagina = int(request.args.get('pagina', 1))
-    por_pagina = 15
-    canais = Canal.query.filter_by(tipo='tv').order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    por_pagina = 10
+    query = Canal.query.filter_by(tipo='tv')
+    query = filtrar_adultos(query)
+    canais = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [c.serialize() for c in canais.items],
         'total': canais.total,
@@ -298,8 +402,10 @@ def api_tv_lista():
 @app.route('/api/radio/lista')
 def api_radio_lista():
     pagina = int(request.args.get('pagina', 1))
-    por_pagina = 15
-    radios = Canal.query.filter_by(tipo='radio').order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    por_pagina = 10
+    query = Canal.query.filter_by(tipo='radio')
+    query = filtrar_adultos(query)
+    radios = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [r.serialize() for r in radios.items],
         'total': radios.total,
@@ -312,22 +418,54 @@ def api_busca():
     termo = request.args.get('q', '').strip()
     pagina = int(request.args.get('pagina', 1))
     por_pagina = 20
-    
     if not termo:
         return jsonify({'itens': [], 'total': 0, 'pagina': 1, 'total_paginas': 1})
     
+    # Busca geral
     query = Canal.query.filter(Canal.nome.ilike(f'%{termo}%'))
-    total = query.count()
-    paginacao = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    query = filtrar_adultos(query)
+    
+    # Precisamos agrupar séries para não repetir episódios
+    # Vamos fazer duas consultas: uma para séries (agrupadas) e outra para os demais tipos
+    from sqlalchemy import func
+    
+    # Subconsulta para séries: pegar o menor ID de cada série que corresponde ao termo
+    subquery_series = db.session.query(
+        Canal.serie_nome,
+        func.min(Canal.id).label('id')
+    ).filter(
+        Canal.tipo == 'serie',
+        Canal.nome.ilike(f'%{termo}%')
+    ).group_by(Canal.serie_nome).subquery()
+    
+    series = db.session.query(Canal).join(
+        subquery_series, Canal.id == subquery_series.c.id
+    ).all()
+    
+    # Outros tipos (filme, tv, radio) - busca normal
+    outros = Canal.query.filter(
+        Canal.tipo.in_(['filme', 'tv', 'radio']),
+        Canal.nome.ilike(f'%{termo}%')
+    ).all()
+    
+    # Combina e ordena
+    resultados = series + outros
+    # Ordenar por nome
+    resultados.sort(key=lambda x: x.nome)
+    
+    # Paginação manual simples
+    total = len(resultados)
+    inicio = (pagina - 1) * por_pagina
+    fim = inicio + por_pagina
+    itens_pagina = resultados[inicio:fim]
     
     return jsonify({
-        'itens': [c.serialize() for c in paginacao.items],
+        'itens': [c.serialize() for c in itens_pagina],
         'total': total,
         'pagina': pagina,
-        'total_paginas': paginacao.pages
+        'total_paginas': (total + por_pagina - 1) // por_pagina
     })
 
-# Serialização para JSON
 def serialize_canal(canal):
     return {
         'id': canal.id,
@@ -340,8 +478,49 @@ def serialize_canal(canal):
         'episodio': canal.episodio,
         'serie_nome': canal.serie_nome
     }
-
 Canal.serialize = serialize_canal
+
+# ---------- Rotas para categorias ----------
+@app.route('/api/filmes/categorias')
+def api_filmes_categorias():
+    categorias = db.session.query(Canal.categoria).filter_by(tipo='filme').distinct().all()
+    return jsonify([c[0] for c in categorias if c[0]])
+
+@app.route('/api/series/categorias')
+def api_series_categorias():
+    categorias = db.session.query(Canal.categoria).filter_by(tipo='serie').distinct().all()
+    return jsonify([c[0] for c in categorias if c[0]])
+
+@app.route('/api/filmes/categoria/<categoria>/lista')
+def api_filmes_categoria_lista(categoria):
+    pagina = int(request.args.get('pagina', 1))
+    por_pagina = 20
+    query = Canal.query.filter_by(tipo='filme', categoria=categoria)
+    total = query.count()
+    filmes = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    return jsonify({
+        'itens': [f.serialize() for f in filmes.items],
+        'total': total,
+        'pagina': pagina,
+        'total_paginas': filmes.pages
+    })
+
+@app.route('/api/series/categoria/<categoria>/lista')
+def api_series_categoria_lista(categoria):
+    pagina = int(request.args.get('pagina', 1))
+    por_pagina = 20
+    from sqlalchemy import func
+    subquery = db.session.query(Canal.serie_nome, func.min(Canal.id).label('id')).filter(
+        Canal.tipo=='serie', Canal.categoria==categoria).group_by(Canal.serie_nome).subquery()
+    query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
+    total = query.count()
+    series = query.order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    return jsonify({
+        'itens': [s.serialize() for s in series.items],
+        'total': total,
+        'pagina': pagina,
+        'total_paginas': series.pages
+    })
 
 # ---------- Favoritos ----------
 @app.route('/favoritar/<int:canal_id>', methods=['POST'])
@@ -363,6 +542,15 @@ def favoritar(canal_id):
         db.session.commit()
         return jsonify({'status': 'adicionado'})
 
+@app.route('/api/favoritos')
+def api_favoritos():
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    usuario_id = session['usuario_id']
+    favs = Favorito.query.filter_by(usuario_id=usuario_id).all()
+    return jsonify([f.canal.serialize() for f in favs if f.canal])
+
+# ---------- Progresso ----------
 @app.route('/progresso/<int:canal_id>', methods=['POST'])
 def salvar_progresso(canal_id):
     if 'usuario_id' not in session:
@@ -377,7 +565,7 @@ def salvar_progresso(canal_id):
         progresso.duracao = duracao
         progresso.data_atualizacao = datetime.utcnow()
     else:
-        progresso = Progresso(usuario_id=usuario_id, canal_id=canal_id, tempo=tempo, duracao=duracao, data_atualizacao=datetime.utcnow())
+        progresso = Progresso(usuario_id=usuario_id, canal_id=canal_id, tempo=tempo, duracao=duracao)
         db.session.add(progresso)
     db.session.commit()
     return jsonify({'status': 'ok'})

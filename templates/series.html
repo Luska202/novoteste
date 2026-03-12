@@ -1,81 +1,280 @@
 {% extends "base.html" %}
 {% block title %}Séries{% endblock %}
 {% block content %}
-<h1 class="section-title">Séries</h1>
+<div class="page-with-sidebar">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>Filtros</h2>
+            <button class="sidebar-close" id="sidebar-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="sidebar-search">
+            <input type="text" id="search-input" class="search-input" placeholder="Buscar séries...">
+            <button id="search-btn" class="search-btn">Buscar</button>
+        </div>
+        <div class="sidebar-categories">
+            <h3>Categorias</h3>
+            <ul id="categorias-list">
+                <li><a href="#" data-categoria="todos" class="categoria-link active">Todos</a></li>
+                <!-- Categorias serão carregadas via JS -->
+            </ul>
+        </div>
+    </aside>
 
-<div class="search-container">
-    <input type="text" id="search-input" class="search-input" placeholder="Pesquisar séries...">
-    <button id="search-btn" class="search-btn">Pesquisar</button>
-</div>
+    <!-- Conteúdo principal -->
+    <main class="main-content">
+        <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" style="display: none;">
+            <i class="fas fa-filter"></i> Filtrar
+        </button>
 
-<h2 class="section-title">Lançamento</h2>
-<div class="horizontal-scroll" id="lancamento"></div>
+        <!-- Seções fixas (visíveis apenas quando "Todos" está ativo) -->
+        <div id="secoes-fixas">
+            <h2 class="section-title">Lançamento</h2>
+            <div class="horizontal-scroll" id="lancamento"></div>
 
-<h2 class="section-title">Globoplay</h2>
-<div class="horizontal-scroll" id="globoplay"></div>
+            <h2 class="section-title">Globoplay</h2>
+            <div class="horizontal-scroll" id="globoplay"></div>
 
-<h2 class="section-title">Disney+</h2>
-<div class="horizontal-scroll" id="disney"></div>
+            <h2 class="section-title">Disney+</h2>
+            <div class="horizontal-scroll" id="disney"></div>
 
-<h2 class="section-title">Animes</h2>
-<div class="horizontal-scroll" id="animes"></div>
+            <h2 class="section-title">Animes</h2>
+            <div class="horizontal-scroll" id="animes"></div>
 
-<h2 class="section-title">Doramas</h2>
-<div class="horizontal-scroll" id="doramas"></div>
+            <h2 class="section-title">Doramas</h2>
+            <div class="horizontal-scroll" id="doramas"></div>
 
-<h2 class="section-title">Todas as séries (A-Z)</h2>
-<div class="category-grid" id="todas-series"></div>
-<div class="load-more-container">
-    <button id="load-more" class="btn btn-outline" style="display: none;">Carregar Mais</button>
+            <h2 class="section-title">Todas as séries (A-Z)</h2>
+            <div class="category-grid" id="todas-series"></div>
+            <div class="load-more-container">
+                <button id="load-more-todos" class="btn btn-outline" style="display: none;">Carregar Mais</button>
+            </div>
+        </div>
+
+        <!-- Grid para categorias filtradas (inicialmente oculto) -->
+        <div id="categoria-content" style="display: none;">
+            <h1 class="section-title" id="categoria-titulo"></h1>
+            <div class="category-grid" id="categoria-grid"></div>
+            <div class="load-more-container">
+                <button id="load-more-categoria" class="btn btn-outline" style="display: none;">Carregar Mais</button>
+            </div>
+        </div>
+    </main>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script>
     let currentPage = 1;
+    let currentCategoria = 'todos';
+    let currentTermo = '';
 
-    function carregarCategoria(url, containerId) {
-        fetch(url)
+    // Elementos
+    const secoesFixas = document.getElementById('secoes-fixas');
+    const categoriaContent = document.getElementById('categoria-content');
+    const categoriaTitulo = document.getElementById('categoria-titulo');
+    const categoriaGrid = document.getElementById('categoria-grid');
+    const loadMoreTodos = document.getElementById('load-more-todos');
+    const loadMoreCategoria = document.getElementById('load-more-categoria');
+
+    // Sidebar elements
+    const sidebar = document.getElementById('sidebar');
+    const sidebarClose = document.getElementById('sidebar-close');
+    const sidebarToggle = document.getElementById('sidebar-toggle-btn');
+
+    // Carregar categorias na sidebar
+    fetch('/api/series/categorias')
+        .then(res => res.json())
+        .then(categorias => {
+            const lista = document.getElementById('categorias-list');
+            categorias.forEach(cat => {
+                const li = document.createElement('li');
+                li.innerHTML = `<a href="#" data-categoria="${cat}" class="categoria-link">${cat}</a>`;
+                lista.appendChild(li);
+            });
+        });
+
+    // Carregar seções fixas
+    function carregarSecoesFixas() {
+        // Lançamento
+        fetch('/api/series/lancamento')
             .then(res => res.json())
             .then(data => {
-                const container = document.getElementById(containerId);
+                const container = document.getElementById('lancamento');
                 container.innerHTML = '';
-                data.forEach(item => {
-                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item));
-                });
+                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
             });
+
+        // Globoplay
+        fetch('/api/series/categoria/Globoplay')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('globoplay');
+                container.innerHTML = '';
+                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+            });
+
+        // Disney+
+        fetch('/api/series/categoria/Disney+')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('disney');
+                container.innerHTML = '';
+                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+            });
+
+        // Animes
+        fetch('/api/series/categoria/Animes')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('animes');
+                container.innerHTML = '';
+                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+            });
+
+        // Doramas
+        fetch('/api/series/categoria/Doramas')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('doramas');
+                container.innerHTML = '';
+                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+            });
+
+        // Lista completa (A-Z) com paginação
+        carregarListaTodos(1);
     }
 
-    carregarCategoria('/api/series/lancamento', 'lancamento');
-    carregarCategoria('/api/series/categoria/Globoplay', 'globoplay');
-    carregarCategoria('/api/series/categoria/Disney+', 'disney');
-    carregarCategoria('/api/series/categoria/Animes', 'animes');
-    carregarCategoria('/api/series/categoria/Doramas', 'doramas');
-
-    function carregarLista(pagina) {
+    function carregarListaTodos(pagina) {
         fetch(`/api/series/lista?pagina=${pagina}`)
             .then(res => res.json())
             .then(data => {
                 const container = document.getElementById('todas-series');
-                data.itens.forEach(item => {
-                    container.insertAdjacentHTML('beforeend', window.cardTemplate(item));
-                });
-                const btn = document.getElementById('load-more');
+                if (pagina === 1) container.innerHTML = '';
+                data.itens.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
                 if (data.pagina < data.total_paginas) {
-                    btn.style.display = 'block';
-                    btn.dataset.page = data.pagina + 1;
+                    loadMoreTodos.style.display = 'block';
+                    loadMoreTodos.dataset.page = data.pagina + 1;
                 } else {
-                    btn.style.display = 'none';
+                    loadMoreTodos.style.display = 'none';
                 }
             });
     }
 
-    carregarLista(1);
+    // Evento de clique nas categorias da sidebar
+    document.addEventListener('click', function(e) {
+        const link = e.target.closest('.categoria-link');
+        if (!link) return;
 
-    document.getElementById('load-more').addEventListener('click', function() {
-        const nextPage = parseInt(this.dataset.page);
-        carregarLista(nextPage);
+        e.preventDefault();
+        document.querySelectorAll('.categoria-link').forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+        const categoria = link.dataset.categoria;
+
+        if (categoria === 'todos') {
+            secoesFixas.style.display = 'block';
+            categoriaContent.style.display = 'none';
+            currentCategoria = 'todos';
+        } else {
+            secoesFixas.style.display = 'none';
+            categoriaContent.style.display = 'block';
+            categoriaTitulo.textContent = `Séries - ${categoria}`;
+            currentCategoria = categoria;
+            currentPage = 1;
+            carregarCategoria(categoria, 1);
+        }
     });
 
-    window.setupSearch('search-input', 'search-btn');
+    function carregarCategoria(categoria, pagina) {
+        fetch(`/api/series/categoria/${encodeURIComponent(categoria)}/lista?pagina=${pagina}`)
+            .then(res => res.json())
+            .then(data => {
+                if (pagina === 1) categoriaGrid.innerHTML = '';
+                data.itens.forEach(item => categoriaGrid.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+                if (data.pagina < data.total_paginas) {
+                    loadMoreCategoria.style.display = 'block';
+                    loadMoreCategoria.dataset.page = data.pagina + 1;
+                } else {
+                    loadMoreCategoria.style.display = 'none';
+                }
+            });
+    }
+
+    // Botões carregar mais
+    loadMoreTodos.addEventListener('click', function() {
+        const nextPage = parseInt(this.dataset.page);
+        carregarListaTodos(nextPage);
+    });
+
+    loadMoreCategoria.addEventListener('click', function() {
+        const nextPage = parseInt(this.dataset.page);
+        carregarCategoria(currentCategoria, nextPage);
+    });
+
+    // Controle da sidebar no mobile
+    function isMobile() {
+        return window.innerWidth <= 768;
+    }
+
+    function openSidebar() {
+        sidebar.classList.remove('closed');
+        sidebar.classList.add('open');
+        sidebarToggle.style.display = 'none';
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        sidebar.classList.add('closed');
+        if (isMobile()) {
+            sidebarToggle.style.display = 'block';
+        }
+    }
+
+    if (isMobile()) {
+        sidebar.classList.add('closed');
+        sidebarToggle.style.display = 'block';
+        sidebarToggle.addEventListener('click', openSidebar);
+        sidebarClose.addEventListener('click', closeSidebar);
+    } else {
+        sidebar.classList.remove('closed', 'open');
+    }
+
+    // Fechar sidebar ao clicar em um link de categoria
+    document.querySelectorAll('.categoria-link').forEach(link => {
+        link.addEventListener('click', function() {
+            if (isMobile()) {
+                closeSidebar();
+            }
+        });
+    });
+
+    // Fechar sidebar ao redimensionar para desktop
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 768) {
+            sidebar.classList.remove('closed', 'open');
+            sidebar.style.left = '';
+            sidebarToggle.style.display = 'none';
+        } else {
+            sidebar.classList.add('closed');
+            sidebar.classList.remove('open');
+            sidebarToggle.style.display = 'block';
+        }
+    });
+
+    // Inicialização
+    carregarSecoesFixas();
+
+    // Pesquisa
+    window.setupSearch('search-input', 'search-btn', function(termo) {
+        if (termo.trim() === '') return;
+        window.location.href = `/busca?q=${encodeURIComponent(termo)}`;
+    });
 </script>
 {% endblock %}

@@ -15,7 +15,7 @@
                 <div class="episodio-item">
                     <img src="{{ ep.logo }}" alt="{{ ep.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
                     <div class="episodio-info">
-                        <h3>{{ ep.nome }}</h3>
+                        <h3>{{ ep.episodio }} - Episódio</h3>
                         <a href="{{ url_for('play', id=ep.id) }}" class="btn btn-small">Assistir</a>
                         <button class="favorito-btn" data-id="{{ ep.id }}"><i class="fas fa-heart"></i></button>
                     </div>
