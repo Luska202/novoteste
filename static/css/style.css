@@ -182,11 +182,14 @@ main {
     z-index: 5;
 }
 
+/* Imagem sempre visível por inteiro, centralizada */
 .card img {
     width: 100%;
     height: 280px;
-    object-fit: cover;
-    transition: opacity 0.3s ease;
+    object-fit: contain;      /* Mostra a imagem inteira, sem cortes */
+    object-position: center;  /* Centraliza a imagem no espaço disponível */
+    background-color: #000;   /* Fundo preto para preencher as bordas */
+    transition: opacity 0.3s;
 }
 
 .card:hover img {
